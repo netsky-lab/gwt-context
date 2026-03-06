@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+.venv/
+venv/
+env/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+*.db
+*.db-wal
+*.db-shm
+*.npy
+
+tests/benchmarks/results/
+
+.env
+*.env
+
+# IDE
+.vscode/
+.idea/
+
+# GWT data
+/tmp/gwt-context-test/
