@@ -141,13 +141,12 @@ class TestFullCycle:
         system["cycle"].run()
         ws = system["workspace"]
         assert ws.occupied_count == 3
-        initial_ids = ws.item_ids.copy()
 
         # Add more items and broadcast again
         for i in range(5):
             item = ing.ingest(f"new important discovery {i}")
             buf.push(item)
-        record = system["cycle"].run()
+        system["cycle"].run()
 
         # Some items may have been evicted
         # (depends on scoring — at minimum, broadcast ran without error)
@@ -157,8 +156,6 @@ class TestFullCycle:
         """Linked items should score higher when their targets are in workspace."""
         ing = system["ingestion"]
         buf = system["buffer"]
-        store = system["store"]
-        ws = system["workspace"]
 
         # Create and admit item A directly
         item_a = ing.ingest("person A invented the telephone")
@@ -174,6 +171,30 @@ class TestFullCycle:
 
         # Item B should have linked_ids set
         assert item_a.id in item_b.linked_ids
+
+    def test_sync_bidirectional_link_updates_loaded_workspace_and_buffer_items(self, system):
+        """Links created after loading should mutate live session objects."""
+        ing = system["ingestion"]
+        buf = system["buffer"]
+        cycle = system["cycle"]
+        store = system["store"]
+        ws = system["workspace"]
+
+        workspace_item = ing.ingest("anchor fact already in workspace")
+        buf.push(workspace_item)
+        cycle.run()
+        assert ws.contains(workspace_item.id)
+
+        buffered_item = ing.ingest("candidate fact waiting in buffer")
+        buf.push(buffered_item)
+        assert workspace_item.linked_ids == []
+        assert buffered_item.linked_ids == []
+
+        store.add_link(workspace_item.id, buffered_item.id)
+        cycle.sync_bidirectional_link(workspace_item.id, buffered_item.id)
+
+        assert buffered_item.linked_ids == [workspace_item.id]
+        assert workspace_item.linked_ids == [buffered_item.id]
 
     def test_multiple_broadcast_cycles(self, system):
         """Multiple broadcast cycles should work without errors."""

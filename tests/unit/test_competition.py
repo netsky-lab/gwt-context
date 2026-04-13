@@ -4,7 +4,6 @@ from gwt_context.domain.competition import CompetitionEngine
 from gwt_context.domain.models import Goal, MemoryItem, MemoryType
 from gwt_context.domain.specialists import (
     RelevanceSpecialist,
-    RecencySpecialist,
     StructuralLinkageSpecialist,
     create_default_specialists,
 )
@@ -81,3 +80,24 @@ class TestCompetitionEngine:
         item = _item("x", [1, 0, 0])
         score = engine.score_item(item, [], ws)
         assert 0 <= score <= 1
+
+    def test_post_link_multi_hop_candidate_wins_competition(self):
+        structural = StructuralLinkageSpecialist()
+        structural.weight = 1.0
+        engine = CompetitionEngine(specialists=[structural], goal_modulation_strength=0.0)
+
+        ws = GlobalWorkspace(capacity=1)
+        anchor = _item("anchor")
+        ws.admit(anchor)
+
+        linked_candidate = _item("linked")
+        distractor = _item("distractor")
+
+        # Simulate the in-memory state after gwt_link updates already-loaded objects.
+        anchor.linked_ids.append(linked_candidate.id)
+        linked_candidate.linked_ids.append(anchor.id)
+
+        result = engine.run_competition([linked_candidate, distractor], [], ws)
+
+        assert [item.id for item in result.winners] == ["linked"]
+        assert [item.id for item in result.evicted] == ["anchor"]

@@ -4,7 +4,7 @@
 Each tool maps to domain/application operations.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -24,8 +24,8 @@ def register_tools(
     def gwt_store(
         content: str,
         memory_type: str = "semantic",
-        tags: Optional[list[str]] = None,
-        link_to: Optional[list[str]] = None,
+        tags: list[str] | None = None,
+        link_to: list[str] | None = None,
     ) -> dict[str, Any]:
         """Store information in long-term memory and make it eligible for workspace competition.
 
@@ -65,7 +65,7 @@ def register_tools(
     @mcp.tool()
     def gwt_set_goal(
         description: str,
-        keywords: Optional[list[str]] = None,
+        keywords: list[str] | None = None,
         priority: float = 1.0,
     ) -> dict[str, Any]:
         """Set the active goal that guides workspace competition.
@@ -107,7 +107,7 @@ def register_tools(
         return record.formatted_content
 
     @mcp.tool()
-    def gwt_compete(n_slots: Optional[int] = None) -> dict[str, Any]:
+    def gwt_compete(n_slots: int | None = None) -> dict[str, Any]:
         """Run a competition round without applying changes (dry run).
 
         Returns the competition results: who would win, who would be evicted,
@@ -144,7 +144,7 @@ def register_tools(
     def gwt_query(
         query: str,
         k: int = 5,
-        memory_type: Optional[str] = None,
+        memory_type: str | None = None,
     ) -> list[dict[str, Any]]:
         """Search long-term memory by semantic similarity.
 
@@ -213,6 +213,7 @@ def register_tools(
             return {"status": "error", "message": f"Item {target_id} not found"}
 
         store.add_link(source_id, target_id)
+        cycle.sync_bidirectional_link(source_id, target_id)
 
         return {
             "status": "linked",

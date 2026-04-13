@@ -6,15 +6,16 @@ This is the core "business logic" of the system.
 
 from __future__ import annotations
 
+from gwt_context.application.goal_manager import GoalManager
 from gwt_context.domain.broadcast import BroadcastAssembler
 from gwt_context.domain.competition import CompetitionEngine
 from gwt_context.domain.models import (
     ActivationState,
     BroadcastRecord,
+    Goal,
     MemoryItem,
 )
 from gwt_context.domain.workspace import GlobalWorkspace
-from gwt_context.application.goal_manager import GoalManager
 from gwt_context.infrastructure.storage import SQLiteMemoryStore
 from gwt_context.infrastructure.vector_index import VectorIndex
 
@@ -118,6 +119,16 @@ class SelectionBroadcastCycle:
     def goal_manager(self) -> GoalManager:
         return self._gm
 
+    def sync_bidirectional_link(self, source_id: str, target_id: str) -> None:
+        """Update already-loaded session objects after persisting a new link."""
+        for item in self._loaded_items(source_id):
+            if target_id not in item.linked_ids:
+                item.linked_ids.append(target_id)
+
+        for item in self._loaded_items(target_id):
+            if source_id not in item.linked_ids:
+                item.linked_ids.append(source_id)
+
     def run(self) -> BroadcastRecord:
         """Execute one full selection-broadcast cycle."""
         goals = self._gm.active_goals
@@ -159,7 +170,7 @@ class SelectionBroadcastCycle:
 
         return record
 
-    def _gather_candidates(self, goals: list) -> list[MemoryItem]:
+    def _gather_candidates(self, goals: list[Goal]) -> list[MemoryItem]:
         """Collect candidates from buffer and vector search."""
         # Buffer candidates
         buffer_items = self._buffer.top(k=20)
@@ -180,3 +191,19 @@ class SelectionBroadcastCycle:
                         seen_ids.add(item_id)
 
         return buffer_items
+
+    def _loaded_items(self, item_id: str) -> list[MemoryItem]:
+        """Return all live in-session objects for the requested item ID."""
+        loaded: list[MemoryItem] = []
+        seen_refs: set[int] = set()
+
+        for item in self._ws.items + self._buffer.all_items():
+            if item.id != item_id:
+                continue
+            item_ref = id(item)
+            if item_ref in seen_refs:
+                continue
+            loaded.append(item)
+            seen_refs.add(item_ref)
+
+        return loaded
