@@ -23,6 +23,7 @@ import hashlib
 import random
 from pathlib import Path
 
+from tests.benchmarks.config import env_or_default, load_local_env
 from tests.benchmarks.harness import BenchmarkTask, run_benchmark
 
 # --- Data pools for record generation ---
@@ -141,7 +142,12 @@ def _gen_filter_task(
         ),
         context_chunks=chunks,
         expected_answer=answer,
-        metadata={"task_type": "filter", "department": dept, "location": location, "n_records": n_records},
+        metadata={
+            "task_type": "filter",
+            "department": dept,
+            "location": location,
+            "n_records": n_records,
+        },
     )
 
 
@@ -222,17 +228,47 @@ def generate_tasks(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="LongBench Pro-style aggregation benchmark for GWT-Context")
-    parser.add_argument("--api-base", required=True, help="OpenAI-compatible API base URL")
-    parser.add_argument("--model", required=True, help="Model name")
-    parser.add_argument("--api-key", default="not-needed", help="API key")
-    parser.add_argument("--task-types", nargs="+", default=["count", "filter", "aggregate"],
-                        choices=list(TASK_GENERATORS.keys()))
-    parser.add_argument("--records", nargs="+", type=int, default=[30, 50], help="Record counts per task")
+    load_local_env()
+
+    parser = argparse.ArgumentParser(
+        description="LongBench Pro-style aggregation benchmark for GWT-Context",
+    )
+    parser.add_argument(
+        "--api-base",
+        default=env_or_default("BENCHMARK_API_BASE"),
+        help="OpenAI-compatible API base URL (default: BENCHMARK_API_BASE from .env/env)",
+    )
+    parser.add_argument(
+        "--model",
+        default=env_or_default("BENCHMARK_MODEL"),
+        help="Model name (default: BENCHMARK_MODEL from .env/env)",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=env_or_default("BENCHMARK_API_KEY", "not-needed"),
+        help="API key (default: BENCHMARK_API_KEY from .env/env)",
+    )
+    parser.add_argument(
+        "--task-types",
+        nargs="+",
+        default=["count", "filter", "aggregate"],
+        choices=list(TASK_GENERATORS.keys()),
+    )
+    parser.add_argument(
+        "--records", nargs="+", type=int, default=[30, 50], help="Record counts per task",
+    )
     parser.add_argument("--tasks-per-config", type=int, default=5, help="Tasks per config")
     parser.add_argument("--max-tasks", type=int, default=None, help="Max total tasks")
-    parser.add_argument("--results-dir", default="tests/benchmarks/results", help="Output directory")
+    parser.add_argument(
+        "--results-dir", default="tests/benchmarks/results", help="Output directory",
+    )
     args = parser.parse_args()
+
+    if not args.api_base or not args.model:
+        parser.error(
+            "provide --api-base and --model, or set "
+            "BENCHMARK_API_BASE and BENCHMARK_MODEL in .env",
+        )
 
     tasks = generate_tasks(
         task_types=args.task_types,

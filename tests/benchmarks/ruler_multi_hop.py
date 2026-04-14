@@ -24,6 +24,7 @@ import hashlib
 import random
 from pathlib import Path
 
+from tests.benchmarks.config import env_or_default, load_local_env
 from tests.benchmarks.harness import BenchmarkTask, run_benchmark
 
 # --- Fact templates for procedural generation ---
@@ -65,19 +66,28 @@ CHAIN_TEMPLATES = {
         "hop_template": "{person_a}'s doctoral advisor was {person_b} at {university}",
         "question_2hop": "Who was the doctoral advisor of {start}?",
         "question_3hop": "Who was the doctoral advisor of the doctoral advisor of {start}?",
-        "question_4hop": "Who was the doctoral advisor of the doctoral advisor of the doctoral advisor of {start}?",
+        "question_4hop": (
+            "Who was the doctoral advisor of the doctoral advisor "
+            "of the doctoral advisor of {start}?"
+        ),
     },
     "workplace": {
         "hop_template": "{person_a} worked with {person_b} at {university}",
         "question_2hop": "Who did {start} work with?",
         "question_3hop": "Who worked with the person that {start} worked with?",
-        "question_4hop": "Follow the chain: {start} worked with someone, who worked with someone else. Who is at the end?",
+        "question_4hop": (
+            "Follow the chain: {start} worked with someone, who worked "
+            "with someone else. Who is at the end?"
+        ),
     },
     "discovery": {
         "hop_template": "{person_a} discovered {field} which was later extended by {person_b}",
         "question_2hop": "Who extended the work of {start}?",
         "question_3hop": "Who extended the work of the person who extended {start}'s work?",
-        "question_4hop": "Follow the discovery chain starting from {start} through 3 extensions. Who is at the end?",
+        "question_4hop": (
+            "Follow the discovery chain starting from {start} "
+            "through 3 extensions. Who is at the end?"
+        ),
     },
 }
 
@@ -194,17 +204,50 @@ def generate_tasks(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="RULER multi-hop benchmark for GWT-Context")
-    parser.add_argument("--api-base", required=True, help="OpenAI-compatible API base URL")
-    parser.add_argument("--model", required=True, help="Model name")
-    parser.add_argument("--api-key", default="not-needed", help="API key")
-    parser.add_argument("--hops", nargs="+", type=int, default=[2, 3], help="Number of hops to test")
-    parser.add_argument("--distractors", nargs="+", type=int, default=[20, 50], help="Distractor counts")
-    parser.add_argument("--tasks-per-config", type=int, default=5, help="Tasks per (hops, distractors) config")
+    load_local_env()
+
+    parser = argparse.ArgumentParser(
+        description="RULER multi-hop benchmark for GWT-Context",
+    )
+    parser.add_argument(
+        "--api-base",
+        default=env_or_default("BENCHMARK_API_BASE"),
+        help="OpenAI-compatible API base URL (default: BENCHMARK_API_BASE from .env/env)",
+    )
+    parser.add_argument(
+        "--model",
+        default=env_or_default("BENCHMARK_MODEL"),
+        help="Model name (default: BENCHMARK_MODEL from .env/env)",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=env_or_default("BENCHMARK_API_KEY", "not-needed"),
+        help="API key (default: BENCHMARK_API_KEY from .env/env)",
+    )
+    parser.add_argument(
+        "--hops", nargs="+", type=int, default=[2, 3], help="Number of hops to test",
+    )
+    parser.add_argument(
+        "--distractors", nargs="+", type=int, default=[20, 50], help="Distractor counts",
+    )
+    parser.add_argument(
+        "--tasks-per-config",
+        type=int,
+        default=5,
+        help="Tasks per (hops, distractors) config",
+    )
     parser.add_argument("--chain-type", default="advisor", choices=list(CHAIN_TEMPLATES.keys()))
     parser.add_argument("--max-tasks", type=int, default=None, help="Max total tasks to run")
-    parser.add_argument("--results-dir", default="tests/benchmarks/results", help="Output directory")
+    parser.add_argument(
+        "--results-dir", default="tests/benchmarks/results", help="Output directory",
+    )
     args = parser.parse_args()
+
+    if not args.api_base or not args.model:
+        parser.error(
+            "provide --api-base and --model, or set "
+            "BENCHMARK_API_BASE and BENCHMARK_MODEL in .env",
+        )
 
     tasks = generate_tasks(
         n_hops_list=args.hops,

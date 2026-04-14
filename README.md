@@ -143,18 +143,39 @@ pytest tests/unit/ tests/integration/ -q
 Benchmark harness for evaluation against OpenAI-compatible APIs (Qwen, Llama, etc. via vLLM/TGI):
 
 ```bash
+pip install -e ".[dev,bench]"
+
+# Optional: copy tracked defaults and adjust locally
+cp .env.example .env
+
 # RULER multi-hop (2-4 hops, scattered needles in haystack)
-python -m tests.benchmarks.ruler_multi_hop \
-    --api-base http://localhost:8000/v1 \
-    --model Qwen/Qwen3-235B-A22B
+python -m tests.benchmarks.ruler_multi_hop
 
 # LongBench Pro aggregation (count, filter, aggregate over records)
-python -m tests.benchmarks.longbench_pro \
-    --api-base http://localhost:8000/v1 \
-    --model Qwen/Qwen3-235B-A22B
+python -m tests.benchmarks.longbench_pro
 ```
 
 Each benchmark runs GWT mode (with tools) and baseline mode (all context in prompt) for comparison. Results saved as JSON in `tests/benchmarks/results/`.
+
+### RunPod endpoint
+
+The benchmark entrypoints load `.env` automatically if it exists. The repository now includes `.env.example` with the current RunPod-compatible defaults:
+
+```dotenv
+BENCHMARK_API_BASE=https://example-openai-compatible-endpoint/v1
+BENCHMARK_MODEL=gemma-4-26b-a4b-public-safe
+BENCHMARK_API_KEY=none
+```
+
+`.env` is ignored by git, while `.env.example` is tracked so the shared setup stays visible. You can still override everything explicitly on the CLI:
+
+```bash
+python -m tests.benchmarks.ruler_multi_hop \
+    --api-base "$BENCHMARK_API_BASE" \
+    --model "$BENCHMARK_MODEL" \
+    --api-key "$BENCHMARK_API_KEY" \
+    --max-tasks 3
+```
 
 ## Configuration
 

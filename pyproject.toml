@@ -19,6 +19,7 @@ dev = [
 ]
 bench = [
     "datasets",
+    "openai>=1.0",
     "tqdm",
 ]
 

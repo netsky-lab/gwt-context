@@ -22,7 +22,9 @@ env/
 tests/benchmarks/results/
 
 .env
+.env.*
 *.env
+!.env.example
 
 # IDE
 .vscode/
