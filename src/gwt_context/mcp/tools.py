@@ -51,8 +51,7 @@ def register_tools(
             link_to=link_to,
         )
 
-        # Push to preconscious buffer
-        cycle.buffer.push(item)
+        cycle.enqueue_for_competition(item)
 
         return {
             "id": item.id,
@@ -78,7 +77,7 @@ def register_tools(
             keywords: Key terms to boost in relevance matching.
             priority: Influence strength (0.1 to 2.0). Higher = stronger bias.
         """
-        goal = cycle.goal_manager.set_goal(
+        goal = cycle.set_goal(
             description=description,
             keywords=keywords,
             priority=priority,
@@ -116,14 +115,7 @@ def register_tools(
         Args:
             n_slots: Number of workspace slots to fill (default: workspace capacity).
         """
-        goals = cycle.goal_manager.active_goals
-        candidates = cycle.buffer.top(k=20)
-        result = cycle._comp.run_competition(
-            candidates=candidates,
-            goals=goals,
-            workspace=cycle.workspace,
-            n_winners=n_slots,
-        )
+        result = cycle.run_competition_dry(n_slots=n_slots)
         return {
             "winners": [
                 {"id": w.id, "score": result.scores.get(w.id, 0), "preview": w.content[:100]}
@@ -182,15 +174,7 @@ def register_tools(
         Args:
             item_id: ID of the item to evict.
         """
-        evicted = cycle.workspace.evict(item_id)
-        if evicted is None:
-            return {"status": "not_found", "message": f"Item {item_id} not in workspace"}
-        cycle.buffer.push(evicted)
-        return {
-            "status": "evicted",
-            "id": evicted.id,
-            "message": "Item moved to preconscious buffer",
-        }
+        return cycle.evict_workspace_item(item_id=item_id)
 
     @mcp.tool()
     def gwt_link(source_id: str, target_id: str) -> dict[str, Any]:
@@ -203,24 +187,7 @@ def register_tools(
             source_id: First item ID.
             target_id: Second item ID.
         """
-        store = ingestion._store
-        source = store.get_item(source_id)
-        target = store.get_item(target_id)
-
-        if source is None:
-            return {"status": "error", "message": f"Item {source_id} not found"}
-        if target is None:
-            return {"status": "error", "message": f"Item {target_id} not found"}
-
-        store.add_link(source_id, target_id)
-        cycle.sync_bidirectional_link(source_id, target_id)
-
-        return {
-            "status": "linked",
-            "source_id": source_id,
-            "target_id": target_id,
-            "message": "Bidirectional link created — items will boost each other in competition",
-        }
+        return cycle.link_items(source_id=source_id, target_id=target_id)
 
     @mcp.tool()
     def gwt_inspect(target: str = "workspace") -> dict[str, Any]:
@@ -233,65 +200,4 @@ def register_tools(
                 - "goals": Active goals
                 - "stats": System statistics
         """
-        if target == "workspace":
-            slots = []
-            for slot in cycle.workspace.slots:
-                if slot.item is not None:
-                    item = slot.item
-                    slots.append({
-                        "slot": slot.index,
-                        "id": item.id,
-                        "content": item.content[:200],
-                        "memory_type": item.memory_type.value,
-                        "activation_level": round(item.activation_level, 3),
-                        "linked_ids": item.linked_ids,
-                    })
-                else:
-                    slots.append({"slot": slot.index, "empty": True})
-            return {
-                "workspace": slots,
-                "occupied": cycle.workspace.occupied_count,
-                "capacity": cycle.workspace.capacity,
-            }
-
-        elif target == "buffer":
-            items = cycle.buffer.top(k=10)
-            return {
-                "buffer_size": cycle.buffer.size,
-                "top_items": [
-                    {
-                        "id": i.id,
-                        "content": i.content[:100],
-                        "activation_level": round(i.activation_level, 3),
-                    }
-                    for i in items
-                ],
-            }
-
-        elif target == "goals":
-            goals = cycle.goal_manager.active_goals
-            return {
-                "active_goals": [
-                    {
-                        "id": g.id,
-                        "description": g.description,
-                        "priority": g.priority,
-                        "keywords": g.keywords,
-                    }
-                    for g in goals
-                ],
-            }
-
-        elif target == "stats":
-            store = ingestion._store
-            return {
-                "total_items": store.count_items(),
-                "workspace_occupied": cycle.workspace.occupied_count,
-                "workspace_capacity": cycle.workspace.capacity,
-                "buffer_size": cycle.buffer.size,
-                "broadcasts": store.get_broadcast_count(),
-                "active_goals": len(cycle.goal_manager.active_goals),
-            }
-
-        else:
-            return {"error": f"Unknown target: {target}. Use: workspace, buffer, goals, stats"}
+        return cycle.inspect(target=target)
