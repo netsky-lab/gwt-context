@@ -10,3 +10,8 @@
 - Added target clean architecture baseline in ARCHITECTURE.md.
 - Defined explicit layer dependency rules, composition-root responsibilities, import matrix, and ADR-1..ADR-4.
 - Added explicit forbidden leak list and a migration path for P5 (ports-first application refactor) and P6 (MCP boundary cleanup).
+
+## 2026-04-19
+
+- Refined `ARCHITECTURE.md` with interface-layer target map, allowed/forbidden import matrix, and operation flow diagrams (memory ingest/link/inspect).
+- Added explicit migration enforcement checks for P5/P6 and concrete review gate checklist.

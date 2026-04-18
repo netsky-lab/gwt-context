@@ -11,31 +11,35 @@ The current implementation works end-to-end, but it still binds across layers in
 
 The target below is not a rewrite of code; it is a contract for the next refactor.
 
-## 2) Current module map
+## 2) Intended module map (target)
 
 ```text
 src/gwt_context/
-├── domain/
+├── domain/            # pure rules + entity/stateful invariants
 │   ├── models.py
 │   ├── workspace.py
 │   ├── competition.py
 │   ├── specialists.py
 │   └── broadcast.py
-├── application/
+├── application/       # orchestration + workflow policies
 │   ├── cycle.py
 │   ├── ingestion.py
 │   └── goal_manager.py
-├── infrastructure/
+├── infrastructure/    # concrete adapters for external systems
 │   ├── config.py
 │   ├── embeddings.py
 │   ├── storage.py
 │   └── vector_index.py
-├── mcp/
+├── interfaces/        # target-facing contracts for ports and adapters (intent-only)
+│   └── ports.py
+├── mcp/              # transport-facing protocol surface
 │   ├── tools.py
 │   ├── resources.py
 │   └── prompts.py
-└── server.py
+└── server.py          # composition root + bootstrap
 ```
+
+Note: `interfaces/` is target architecture intent and may be introduced by P5/P6.
 
 ## 3) Allowed dependency directions
 
@@ -83,6 +87,17 @@ Target anti-responsibilities for `server.py`:
 - no direct mutation of domain entities outside construction/registration
 
 ## 6) Module/import matrix (current vs target)
+
+### Allowed/forbidden import matrix (examples)
+
+| From layer | May import | Must not import |
+| --- | --- | --- |
+| Domain | stdlib + domain-only types | application, infrastructure, mcp, server |
+| Application | domain, interface ports | infrastructure concrete classes, mcp, server |
+| Infrastructure | domain, stdlib | application, mcp, server |
+| Interfaces (ports) | domain DTO/types | concrete implementations |
+| MCP | interfaces/application services, domain DTOs | infrastructure concrete classes, domain orchestration internals |
+| server.py (composition root) | domain, application, infrastructure, interfaces | none required (implementation-only logic stays in layers) |
 
 | Module | Current imports (observed) | Target imports | Status |
 | --- | --- | --- | --- |
@@ -142,10 +157,56 @@ Target anti-responsibilities for `server.py`:
 - Rationale: Preserves transport stability and prevents state-shape breakage from leaking into protocol handlers.
 - Consequences: `mcp/resources.py` and `mcp/tools.py` become thin facades; richer output is shaped by application services.
 
-## 12) Migration path for P5/P6
+## 12) Flow examples (layer crossings)
+
+### 12.1 Memory ingest flow
+
+```mermaid
+sequenceDiagram
+    participant Tool as MCP Tool Handler
+    participant AppIngest as application.ingestion
+    participant Domain as domain.models/workspace
+    participant Repo as Infrastructure storage
+    participant Search as Infrastructure vector_index
+    participant Emb as Infrastructure embeddings
+
+    Tool->>AppIngest: ingest(content, memory_type, tags)
+    AppIngest->>Emb: embed(content)
+    AppIngest->>Domain: MemoryItem(entity created)
+    AppIngest->>Repo: save_item(item)
+    AppIngest->>Search: add(id, vector)
+    AppIngest-->>Tool: created MemoryItem
+```
+
+### 12.2 Link creation flow
+
+```mermaid
+sequenceDiagram
+    participant Tool as MCP Tool Handler
+    participant AppCycle as application.cycle
+    participant Repo as Infrastructure storage
+    participant Domain as domain.models
+
+    Tool->>AppCycle: link_items(source_id, target_id)
+    AppCycle->>Repo: add_link(source_id, target_id)
+    AppCycle-->>Tool: status + link_result
+```
+
+### 12.3 Inspect flow
+
+```mermaid
+sequenceDiagram
+    participant Resource as MCP Resource
+    participant AppCycle as application.cycle
+
+    Resource->>AppCycle: inspect(target="workspace|buffer|goals|stats")
+    AppCycle-->>Resource: sanitized read-model snapshot
+```
+
+## 13) Migration path for P5/P6
 
 ### P5 (application depends on ports)
-1. Add protocol/ABC interfaces for each `*Port` in `application/ports.py`.
+1. Add protocol/ABC interfaces for each `*Port` in `interfaces/ports.py`.
 2. Refactor constructors in `cycle.py`, `ingestion.py`, and `goal_manager.py` to accept ports.
 3. Add thin infrastructure adapters in `infrastructure/` where needed.
 4. Update `server.py` to instantiate adapters and pass them in.
@@ -154,6 +215,15 @@ Target anti-responsibilities for `server.py`:
 ### P6 (MCP boundary cleanup)
 1. Add explicit application service interfaces for MCP-visible behavior (`CyclePort`, `IngestionPort`).
 2. Replace direct `SQLiteMemoryStore` usage in `mcp/resources.py` with service calls.
-3. Replace any direct field access to cycle internals with dedicated application methods.
+3. Replace any direct access to cycle internals with dedicated application methods.
 4. Keep MCP handlers thin and declarative.
 5. Verify with boundary tests that tools/resources only call declared application services.
+
+## 14) Review checks for enforcement
+
+- [ ] No `application/*` imports of `infrastructure/*` concrete classes.
+- [ ] No `mcp/*` imports of concrete `infrastructure/*` classes.
+- [ ] MCP handlers use only application contracts for orchestration and side effects.
+- [ ] `server.py` is only location that instantiates infra adapters and assembles runtime.
+- [ ] No new cross-layer mutable references are passed across boundaries.
+- [ ] New changes include or update boundary tests for `mcp.tools` and `mcp.resources` delegation paths.
