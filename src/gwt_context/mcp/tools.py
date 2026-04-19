@@ -8,15 +8,14 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from gwt_context.application.cycle import SelectionBroadcastCycle
-from gwt_context.application.ingestion import IngestionPipeline
 from gwt_context.domain.models import MemoryType
+from gwt_context.interfaces.ports import CyclePort, IngestionPort
 
 
 def register_tools(
     mcp: FastMCP,
-    cycle: SelectionBroadcastCycle,
-    ingestion: IngestionPipeline,
+    cycle: CyclePort,
+    ingestion: IngestionPort,
 ) -> None:
     """Register all GWT tools on the MCP server."""
 

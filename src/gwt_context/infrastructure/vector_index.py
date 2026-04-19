@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 class VectorIndex:
@@ -25,13 +25,13 @@ class VectorIndex:
         self,
         dim: int = 384,
         max_elements: int = 100_000,
-        path: Optional[Path] = None,
+        path: Path | None = None,
     ) -> None:
         self._dim = dim
         self._path = path
         self._id_to_idx: dict[str, int] = {}
         self._idx_to_id: dict[int, str] = {}
-        self._vectors: list[np.ndarray] = []  # Normalized vectors
+        self._vectors: list[NDArray[np.float32]] = []  # Normalized vectors
 
         if path and path.with_suffix(".json").exists():
             self._load(path)
@@ -96,7 +96,7 @@ class VectorIndex:
                     break
         return results
 
-    def save(self, path: Optional[Path] = None) -> None:
+    def save(self, path: Path | None = None) -> None:
         """Persist index to disk as JSON + numpy binary."""
         save_path = path or self._path
         if save_path is None:

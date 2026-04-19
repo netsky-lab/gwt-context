@@ -8,8 +8,7 @@ Implements GWT markers:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from gwt_context.domain.models import (
     ActivationState,
@@ -74,7 +73,7 @@ class GlobalWorkspace:
         """
         for slot in self._slots:
             if slot.is_empty:
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 item.activation_state = ActivationState.CONSCIOUS
                 item.entered_workspace_at = now
                 item.touch()
@@ -83,7 +82,7 @@ class GlobalWorkspace:
                 return True
         return False
 
-    def evict(self, item_id: str) -> Optional[MemoryItem]:
+    def evict(self, item_id: str) -> MemoryItem | None:
         """Remove item by ID. Returns it with state set to PRECONSCIOUS."""
         for slot in self._slots:
             if slot.item is not None and slot.item.id == item_id:
@@ -118,11 +117,11 @@ class GlobalWorkspace:
         """
         if not self.items:
             return (
-                "=== GLOBAL WORKSPACE [0/{cap}] ===\n"
+                f"=== GLOBAL WORKSPACE [0/{self._capacity}] ===\n"
                 "Workspace empty. Use gwt_store to add information "
                 "and gwt_set_goal to set your objective.\n"
                 "=== END WORKSPACE ==="
-            ).format(cap=self._capacity)
+            )
 
         lines = [f"=== GLOBAL WORKSPACE [{self.occupied_count}/{self._capacity}] ==="]
         for slot in self._slots:

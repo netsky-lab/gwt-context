@@ -8,10 +8,9 @@ Tests with real sentence-transformers embeddings.
 import asyncio
 import json
 import tempfile
-from pathlib import Path
 
-from gwt_context.server import create_server
 from gwt_context.infrastructure.config import GWTConfig
+from gwt_context.server import create_server
 
 
 async def test_multi_hop_reasoning():
@@ -58,10 +57,16 @@ async def test_multi_hop_reasoning():
 
         # === STEP 2: Set goal ===
         print("\n--- Step 2: Setting goal ---")
-        r = await tm.call_tool('gwt_set_goal', {
-            'description': 'Find who was the doctoral advisor of the person who developed general relativity',
-            'keywords': ['doctoral advisor', 'general relativity', 'developed'],
-        })
+        r = await tm.call_tool(
+            "gwt_set_goal",
+            {
+                "description": (
+                    "Find who was the doctoral advisor of the person "
+                    "who developed general relativity"
+                ),
+                "keywords": ["doctoral advisor", "general relativity", "developed"],
+            },
+        )
         print(f"  Goal set: {r['goal_id']}")
 
         # === STEP 3: First broadcast — initial selection ===
@@ -124,11 +129,17 @@ async def test_multi_hop_reasoning():
         if kleiner_advisor_id:
             links.append(kleiner_advisor_id)
 
-        r = await tm.call_tool('gwt_store', {
-            'content': 'Hop 1: Einstein developed general relativity. Hop 2: His doctoral advisor was Alfred Kleiner.',
-            'memory_type': 'working',
-            'link_to': links,
-        })
+        r = await tm.call_tool(
+            "gwt_store",
+            {
+                "content": (
+                    "Hop 1: Einstein developed general relativity. "
+                    "Hop 2: His doctoral advisor was Alfred Kleiner."
+                ),
+                "memory_type": "working",
+                "link_to": links,
+            },
+        )
         working_id = r['id']
         print(f"  Stored working memory [{working_id}]")
 
@@ -148,12 +159,23 @@ async def test_multi_hop_reasoning():
         # === STEP 9: Verify answer can be derived ===
         print("\n--- Step 9: Answer verification ---")
         ws_contents = " ".join(s['content'] for s in ws_items)
-        has_einstein_relativity = 'einstein' in ws_contents.lower() and 'relativity' in ws_contents.lower()
-        has_kleiner_advisor = 'kleiner' in ws_contents.lower() and ('advisor' in ws_contents.lower() or 'supervised' in ws_contents.lower())
+        has_einstein_relativity = (
+            "einstein" in ws_contents.lower() and "relativity" in ws_contents.lower()
+        )
+        has_kleiner_advisor = (
+            "kleiner" in ws_contents.lower()
+            and (
+                "advisor" in ws_contents.lower()
+                or "supervised" in ws_contents.lower()
+            )
+        )
 
         print(f"  Einstein + relativity in workspace: {has_einstein_relativity}")
         print(f"  Kleiner as advisor in workspace:    {has_kleiner_advisor}")
-        print(f"  Multi-hop chain complete:           {has_einstein_relativity and has_kleiner_advisor}")
+        print(
+            "  Multi-hop chain complete:           "
+            f"{has_einstein_relativity and has_kleiner_advisor}"
+        )
 
         if has_einstein_relativity and has_kleiner_advisor:
             print("\n  ANSWER: Alfred Kleiner was the doctoral advisor of Einstein,")
@@ -199,7 +221,10 @@ async def test_goal_switching():
 
         # Goal 2: Geography
         print("\n--- Goal 2: Geography ---")
-        await tm.call_tool('gwt_set_goal', {'description': 'Learn about world geography and landmarks'})
+        await tm.call_tool(
+            "gwt_set_goal",
+            {"description": "Learn about world geography and landmarks"},
+        )
         r = await tm.call_tool('gwt_broadcast', {})
         print(r)
 
@@ -245,7 +270,9 @@ async def test_eviction_pressure():
 
         # Verify: workspace should now have physics, not geography
         insp = await tm.call_tool('gwt_inspect', {'target': 'workspace'})
-        ws_contents = " ".join(s.get('content', '') for s in insp['workspace'] if not s.get('empty'))
+        ws_contents = " ".join(
+            s.get("content", "") for s in insp["workspace"] if not s.get("empty")
+        )
         has_physics = any(w in ws_contents.lower() for w in ['einstein', 'quantum', 'higgs'])
         print(f"\n  Physics in workspace: {has_physics}")
         print(f"  STATUS: {'PASS' if has_physics else 'FAIL'}")

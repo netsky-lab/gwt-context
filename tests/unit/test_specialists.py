@@ -1,7 +1,6 @@
 """Tests for specialist processors."""
 
-import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from gwt_context.domain.models import Goal, MemoryItem, MemoryType
 from gwt_context.domain.specialists import (
@@ -80,7 +79,7 @@ class TestRecencySpecialist:
     def test_old_item(self):
         s = RecencySpecialist(half_life_hours=1.0)
         item = _make_item()
-        item.last_accessed = datetime.now(timezone.utc) - timedelta(hours=5)
+        item.last_accessed = datetime.now(UTC) - timedelta(hours=5)
         score = s.score(item, [], GlobalWorkspace())
         assert score < 0.1
 

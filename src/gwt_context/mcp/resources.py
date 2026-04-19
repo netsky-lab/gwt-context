@@ -5,21 +5,20 @@ Resources provide passive read access to system state.
 
 from mcp.server.fastmcp import FastMCP
 
-from gwt_context.application.cycle import SelectionBroadcastCycle
-from gwt_context.infrastructure.storage import SQLiteMemoryStore
+from gwt_context.interfaces.ports import CyclePort, MemoryRepositoryPort
 
 
 def register_resources(
     mcp: FastMCP,
-    cycle: SelectionBroadcastCycle,
-    store: SQLiteMemoryStore,
+    cycle: CyclePort,
+    store: MemoryRepositoryPort,
 ) -> None:
     """Register all GWT resources on the MCP server."""
 
     @mcp.resource("gwt://workspace")
     def workspace_resource() -> str:
         """Current workspace broadcast text."""
-        return cycle.workspace.get_broadcast_text()
+        return str(cycle.workspace.get_broadcast_text())
 
     @mcp.resource("gwt://workspace/slots")
     def workspace_slots() -> str:

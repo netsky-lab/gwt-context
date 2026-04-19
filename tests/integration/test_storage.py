@@ -56,7 +56,9 @@ class TestSQLiteMemoryStore:
         assert loaded.activation_state == ActivationState.CONSCIOUS
 
     def test_get_items_by_state(self, store):
-        for i, state in enumerate([ActivationState.LONG_TERM, ActivationState.PRECONSCIOUS, ActivationState.LONG_TERM]):
+        for i, state in enumerate(
+            [ActivationState.LONG_TERM, ActivationState.PRECONSCIOUS, ActivationState.LONG_TERM],
+        ):
             store.save_item(MemoryItem(id=f"item{i}", content=f"c{i}", activation_state=state))
         lt = store.get_items_by_state(ActivationState.LONG_TERM)
         assert len(lt) == 2

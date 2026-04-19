@@ -10,7 +10,6 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import tempfile
 import time
@@ -33,7 +32,6 @@ from gwt_context.infrastructure.embeddings import SentenceTransformerEmbedder
 from gwt_context.infrastructure.storage import SQLiteMemoryStore
 from gwt_context.infrastructure.vector_index import VectorIndex
 
-
 # --- GWT Tool Definitions (OpenAI function calling format) ---
 
 GWT_TOOLS = [
@@ -41,13 +39,24 @@ GWT_TOOLS = [
         "type": "function",
         "function": {
             "name": "gwt_store",
-            "description": "Store information in long-term memory. Use to save facts, observations, intermediate reasoning.",
+            "description": (
+                "Store information in long-term memory. Use to save facts, "
+                "observations, intermediate reasoning."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "content": {"type": "string", "description": "Text to store"},
-                    "memory_type": {"type": "string", "enum": ["episodic", "semantic", "procedural", "working"], "default": "semantic"},
-                    "link_to": {"type": "array", "items": {"type": "string"}, "description": "IDs of items to link to"},
+                    "memory_type": {
+                        "type": "string",
+                        "enum": ["episodic", "semantic", "procedural", "working"],
+                        "default": "semantic",
+                    },
+                    "link_to": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "IDs of items to link to",
+                    },
                 },
                 "required": ["content"],
             },
@@ -72,7 +81,10 @@ GWT_TOOLS = [
         "type": "function",
         "function": {
             "name": "gwt_broadcast",
-            "description": "Run selection-broadcast cycle. Returns workspace with most relevant items. Call before reasoning.",
+            "description": (
+                "Run selection-broadcast cycle. Returns workspace with most "
+                "relevant items. Call before reasoning."
+            ),
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -80,7 +92,10 @@ GWT_TOOLS = [
         "type": "function",
         "function": {
             "name": "gwt_query",
-            "description": "Search long-term memory by semantic similarity. Returns items without admitting to workspace.",
+            "description": (
+                "Search long-term memory by semantic similarity. "
+                "Returns items without admitting to workspace."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -95,7 +110,10 @@ GWT_TOOLS = [
         "type": "function",
         "function": {
             "name": "gwt_link",
-            "description": "Link two memory items bidirectionally. Linked items boost each other in competition.",
+            "description": (
+                "Link two memory items bidirectionally. "
+                "Linked items boost each other in competition."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -232,12 +250,19 @@ class GWTSession:
 
         workspace = GlobalWorkspace(capacity=config.workspace_capacity)
         specialists = create_default_specialists()
-        competition = CompetitionEngine(specialists=specialists, goal_modulation_strength=config.goal_modulation_strength)
+        competition = CompetitionEngine(
+            specialists=specialists,
+            goal_modulation_strength=config.goal_modulation_strength,
+        )
         broadcast = BroadcastAssembler(max_tokens=config.max_broadcast_tokens)
         buffer = PreconsciousBuffer(max_size=config.buffer_size)
         goal_manager = GoalManager(store=self._store, embedder=self._embedder)
 
-        self._ingestion = IngestionPipeline(store=self._store, vector_index=self._vi, embedder=self._embedder)
+        self._ingestion = IngestionPipeline(
+            store=self._store,
+            vector_index=self._vi,
+            embedder=self._embedder,
+        )
         self._cycle = SelectionBroadcastCycle(
             workspace=workspace, competition=competition, broadcast=broadcast,
             buffer=buffer, store=self._store, vector_index=self._vi, goal_manager=goal_manager,
@@ -406,7 +431,13 @@ def run_task_baseline(
 
     context = "\n\n".join(task.context_chunks)
     messages = [
-        {"role": "system", "content": "Answer the question based on the provided context. End with ANSWER: <your answer>"},
+        {
+            "role": "system",
+            "content": (
+                "Answer the question based on the provided context. "
+                "End with ANSWER: <your answer>"
+            ),
+        },
         {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {task.question}"},
     ]
 
@@ -463,7 +494,10 @@ def run_benchmark(
         result_gwt = run_task_gwt(client, model, task, embedder)
         report.results.append(result_gwt)
         status = "OK" if result_gwt.correct else "WRONG"
-        print(f"  GWT:      {status} ({result_gwt.tool_calls} calls, {result_gwt.latency_seconds:.1f}s)")
+        print(
+            "  GWT:      "
+            f"{status} ({result_gwt.tool_calls} calls, {result_gwt.latency_seconds:.1f}s)"
+        )
 
         # Baseline mode
         result_bl = run_task_baseline(client, model, task)
@@ -489,7 +523,7 @@ def _extract_answer(text: str) -> str:
     if "ANSWER:" in text:
         return text.split("ANSWER:")[-1].strip()
     # Fallback: last line
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
     return lines[-1] if lines else text
 
 

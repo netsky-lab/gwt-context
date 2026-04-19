@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol, cast
+
+
+class EmbeddingBackendProtocol(Protocol):
+    """Minimal interface for an embedding model."""
+
+    def encode(self, *args: Any, **kwargs: Any) -> Any:
+        ...
 
 
 class EmbeddingProvider(Protocol):
@@ -24,9 +31,9 @@ class SentenceTransformerEmbedder:
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
         self._model_name = model_name
-        self._model = None  # Lazy init
+        self._model: EmbeddingBackendProtocol | None = None
 
-    def _ensure_model(self):
+    def _ensure_model(self) -> None:
         if self._model is None:
             from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(self._model_name)
@@ -37,8 +44,14 @@ class SentenceTransformerEmbedder:
 
     def embed(self, text: str) -> list[float]:
         self._ensure_model()
-        return self._model.encode(text).tolist()
+        model = self._model
+        assert model is not None
+        embedding = model.encode(text)
+        return cast(list[float], embedding)
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         self._ensure_model()
-        return self._model.encode(texts).tolist()
+        model = self._model
+        assert model is not None
+        embeddings = model.encode(texts)
+        return cast(list[list[float]], embeddings)

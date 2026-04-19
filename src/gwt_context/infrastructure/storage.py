@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from gwt_context.domain.models import (
     ActivationState,
@@ -112,7 +111,7 @@ class SQLiteMemoryStore:
         )
         self._conn.commit()
 
-    def get_item(self, item_id: str) -> Optional[MemoryItem]:
+    def get_item(self, item_id: str) -> MemoryItem | None:
         row = self._conn.execute(
             "SELECT * FROM memory_items WHERE id = ?", (item_id,)
         ).fetchone()
@@ -148,7 +147,7 @@ class SQLiteMemoryStore:
 
     def count_items(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM memory_items").fetchone()
-        return row[0]
+        return int(row[0]) if row else 0
 
     def add_link(self, source_id: str, target_id: str) -> None:
         """Add bidirectional link between two items."""
@@ -187,6 +186,13 @@ class SQLiteMemoryStore:
         self._conn.execute("UPDATE goals SET active = 0")
         self._conn.commit()
 
+    def deactivate_all(self) -> None:
+        """Deactivate all active goals.
+
+        Compatibility shim for MemoryRepositoryPort.
+        """
+        self.deactivate_all_goals()
+
     # --- Broadcast CRUD ---
 
     def save_broadcast(self, record: BroadcastRecord) -> None:
@@ -209,7 +215,7 @@ class SQLiteMemoryStore:
 
     def get_broadcast_count(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM broadcasts").fetchone()
-        return row[0]
+        return int(row[0]) if row else 0
 
     # --- Conversion helpers ---
 

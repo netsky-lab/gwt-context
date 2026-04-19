@@ -16,8 +16,9 @@ Specialist protocol + 6 built-in implementations:
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
-from typing import Callable, Protocol, runtime_checkable
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Protocol, runtime_checkable
 
 from gwt_context.domain.models import Goal, MemoryItem
 from gwt_context.domain.workspace import GlobalWorkspace
@@ -102,7 +103,7 @@ class RecencySpecialist:
         goals: list[Goal],
         workspace: GlobalWorkspace,
     ) -> float:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         age_hours = (now - item.last_accessed).total_seconds() / 3600
         if age_hours <= 0:
             return 1.0

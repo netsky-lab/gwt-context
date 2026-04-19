@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional
 
 
 class MemoryType(Enum):
@@ -30,7 +29,7 @@ class ActivationState(Enum):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _short_id() -> str:
@@ -62,10 +61,10 @@ class MemoryItem:
     # Timestamps
     created_at: datetime = field(default_factory=_now)
     last_accessed: datetime = field(default_factory=_now)
-    entered_workspace_at: Optional[datetime] = None
+    entered_workspace_at: datetime | None = None
 
     # Dense vector embedding (None until computed)
-    embedding: Optional[list[float]] = None
+    embedding: list[float] | None = None
 
     # Bidirectional links to other items — enables multi-hop reasoning
     linked_ids: list[str] = field(default_factory=list)
@@ -91,7 +90,7 @@ class Goal:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     description: str = ""
     keywords: list[str] = field(default_factory=list)
-    embedding: Optional[list[float]] = None
+    embedding: list[float] | None = None
     priority: float = 1.0
     created_at: datetime = field(default_factory=_now)
     active: bool = True
@@ -102,8 +101,8 @@ class WorkspaceSlot:
     """A single slot in the capacity-limited global workspace."""
 
     index: int
-    item: Optional[MemoryItem] = None
-    entered_at: Optional[datetime] = None
+    item: MemoryItem | None = None
+    entered_at: datetime | None = None
     broadcast_count: int = 0
 
     @property
@@ -128,7 +127,7 @@ class BroadcastRecord:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     timestamp: datetime = field(default_factory=_now)
     workspace_snapshot: list[str] = field(default_factory=list)  # item IDs
-    goal_id: Optional[str] = None
+    goal_id: str | None = None
     formatted_content: str = ""
     evicted_ids: list[str] = field(default_factory=list)
     admitted_ids: list[str] = field(default_factory=list)

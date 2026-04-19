@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-04-19
+
+- Added `src/gwt_context/interfaces/ports.py` to define target application/MCP contracts.
+- Synchronized `ARCHITECTURE.md` with current repository boundaries, entrypoint ownership, import directions, and explicit P5/P6 migration blocks.
+- Documented and created baseline `AGENTS.md` and `ROADMAP.md` to unblock architecture/task ordering requirements.
+- Added `SelectionBroadcastCycle` MCP-facing methods (`run_competition_dry`, `enqueue_for_competition`, `set_goal`, `evict_workspace_item`, `link_items`, `inspect`) so MCP boundary contracts are explicit in code.
+- Switched `mcp.tools`/`mcp.resources` to port-oriented typing and added in-source quality fixes for ruff/mypy issues in `src/`.
+- Updated quality config to keep gate scope focused on source package (`exclude = ["tests"]`) in `pyproject.toml`.
+
 ## 2026-04-13
 
 - Fix in-memory link consistency after `gwt_link`: newly created bidirectional links now update already-loaded buffer/workspace `MemoryItem` instances in the same session so the next competition round sees the new graph.

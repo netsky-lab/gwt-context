@@ -12,6 +12,7 @@ from gwt_context.domain.competition import CompetitionEngine
 from gwt_context.domain.models import (
     ActivationState,
     BroadcastRecord,
+    CompetitionResult,
     Goal,
     MemoryItem,
 )
@@ -118,6 +119,120 @@ class SelectionBroadcastCycle:
     @property
     def goal_manager(self) -> GoalManager:
         return self._gm
+
+    def run_competition_dry(self, n_slots: int | None = None) -> CompetitionResult:
+        """Dry-run competition without mutating workspace state."""
+        goals = self._gm.active_goals
+        candidates = self._gather_candidates(goals)
+        return self._comp.run_competition(
+            candidates=candidates,
+            goals=goals,
+            workspace=self._ws,
+            n_winners=n_slots,
+        )
+
+    def enqueue_for_competition(self, item: MemoryItem) -> None:
+        """Add an item to the preconscious buffer for the next cycle."""
+        self._buffer.push(item)
+        self._store.update_state(item.id, ActivationState.PRECONSCIOUS)
+
+    def set_goal(
+        self,
+        description: str,
+        keywords: list[str] | None = None,
+        priority: float = 1.0,
+    ) -> Goal:
+        """Set current competition objective."""
+        return self._gm.set_goal(description=description, keywords=keywords, priority=priority)
+
+    def evict_workspace_item(self, item_id: str) -> dict[str, object]:
+        """Evict a workspace item and move it to preconscious state."""
+        evicted = self._ws.evict(item_id)
+        if evicted is None:
+            return {
+                "status": "not_found",
+                "id": item_id,
+                "message": "Item is not currently in workspace.",
+            }
+        self._buffer.push(evicted)
+        self._store.update_state(item_id, ActivationState.PRECONSCIOUS)
+        return {
+            "status": "evicted",
+            "id": item_id,
+            "state": evicted.activation_state.value,
+            "message": "Item moved to preconscious buffer.",
+        }
+
+    def link_items(self, source_id: str, target_id: str) -> dict[str, object]:
+        """Create/refresh bidirectional links between items."""
+        self._store.add_link(source_id, target_id)
+        self.sync_bidirectional_link(source_id, target_id)
+        return {
+            "status": "linked",
+            "source_id": source_id,
+            "target_id": target_id,
+        }
+
+    def inspect(self, target: str = "workspace") -> dict[str, object]:
+        """Read model snapshot for MCP observability."""
+        normalized = target.lower().strip()
+        if normalized == "workspace":
+            return {
+                "target": "workspace",
+                "occupied_count": self._ws.occupied_count,
+                "capacity": self._ws.capacity,
+                "items": [
+                    {
+                        "index": slot.index,
+                        "id": slot.item.id if slot.item else None,
+                        "content": slot.item.content if slot.item else "",
+                        "memory_type": slot.item.memory_type.value if slot.item else "",
+                        "activation_level": slot.item.activation_level if slot.item else 0.0,
+                        "empty": slot.is_empty,
+                    }
+                    for slot in self._ws.slots
+                ],
+            }
+        if normalized == "buffer":
+            items = self._buffer.all_items()
+            return {
+                "target": "buffer",
+                "size": len(items),
+                "items": [
+                    {
+                        "id": item.id,
+                        "content": item.content,
+                        "memory_type": item.memory_type.value,
+                        "activation_level": item.activation_level,
+                    }
+                    for item in items
+                ],
+            }
+        if normalized == "goals":
+            return {
+                "target": "goals",
+                "count": len(self._gm.active_goals),
+                "items": [
+                    {
+                        "id": goal.id,
+                        "description": goal.description,
+                        "keywords": goal.keywords,
+                        "priority": goal.priority,
+                    }
+                    for goal in self._gm.active_goals
+                ],
+            }
+        if normalized == "stats":
+            return {
+                "target": "stats",
+                "total_items": self._store.count_items(),
+                "broadcasts": self._store.get_broadcast_count(),
+                "buffer_size": self._buffer.size,
+                "workspace_count": self._ws.occupied_count,
+                "active_goals": len(self._gm.active_goals),
+            }
+
+        return {"target": normalized, "status": "unknown", "error": "Unknown target"}
 
     def sync_bidirectional_link(self, source_id: str, target_id: str) -> None:
         """Update already-loaded session objects after persisting a new link."""
