@@ -2,6 +2,14 @@
 
 ## 2026-04-19
 
+- Synced benchmark CLI defaults with config precedence for `BENCHMARK_RESULTS_DIR` in
+  `tests/benchmarks/ruler_multi_hop.py` and `tests/benchmarks/longbench_pro.py`.
+- Added regression tests covering env-backed benchmark `results_dir` defaults and
+  explicit CLI `results_dir` propagation in `tests/unit/test_benchmark_config.py`
+  and `tests/unit/test_benchmark_harness.py`.
+
+## 2026-04-19
+
 - Stabilized benchmark harness/runtime configuration in `tests/benchmarks/config.py` with explicit CLI/env validation (`BENCHMARK_API_BASE`, `BENCHMARK_API_PATH`, `BENCHMARK_MODEL`, timeout, headers, retries, concurrency, results dir).
 - Updated `tests/benchmarks/harness.py` to construct OpenAI clients from deterministic config, compute stable run metadata and write JSON results atomically with deterministic filenames into a single canonical results directory.
 - Extended benchmark CLI entrypoints (`tests/benchmarks/ruler_multi_hop.py`, `tests/benchmarks/longbench_pro.py`) with `--api-path`, `--timeout`, `--api-headers`, `--max-retries`, and `--concurrency` plus documented run-dir behavior.

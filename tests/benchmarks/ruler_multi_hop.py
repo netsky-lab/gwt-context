@@ -255,7 +255,9 @@ def main():
     parser.add_argument("--chain-type", default="advisor", choices=list(CHAIN_TEMPLATES.keys()))
     parser.add_argument("--max-tasks", type=int, default=None, help="Max total tasks to run")
     parser.add_argument(
-        "--results-dir", default="tests/benchmarks/results", help="Output directory",
+        "--results-dir",
+        default=env_or_default("BENCHMARK_RESULTS_DIR", "tests/benchmarks/results"),
+        help="Output directory (default: BENCHMARK_RESULTS_DIR)",
     )
     parser.add_argument(
         "--max-retries",

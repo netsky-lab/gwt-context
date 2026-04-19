@@ -52,6 +52,19 @@ def test_load_benchmark_config_requires_base_and_model(monkeypatch: pytest.Monke
         load_benchmark_config(api_base=None, model=None, api_key="k")
 
 
+def test_load_benchmark_config_results_dir_defaults_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BENCHMARK_API_BASE", "https://api.example.com")
+    monkeypatch.setenv("BENCHMARK_MODEL", "m")
+    monkeypatch.setenv("BENCHMARK_RESULTS_DIR", "/tmp/bench-results")
+    monkeypatch.setenv("BENCHMARK_API_KEY", "k")
+
+    config = load_benchmark_config(api_base=None, model=None, api_key=None)
+
+    assert config.results_dir == "/tmp/bench-results"
+
+
 def test_parse_api_headers_accepts_json_and_csv() -> None:
     assert parse_api_headers('{"X-1":"a", "Y":"b"}') == {"X-1": "a", "Y": "b"}
     assert parse_api_headers("x=1,y=two, z=3") == {"x": "1", "y": "two", "z": "3"}

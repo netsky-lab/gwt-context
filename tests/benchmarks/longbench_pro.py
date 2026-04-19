@@ -276,7 +276,9 @@ def main():
     parser.add_argument("--tasks-per-config", type=int, default=5, help="Tasks per config")
     parser.add_argument("--max-tasks", type=int, default=None, help="Max total tasks")
     parser.add_argument(
-        "--results-dir", default="tests/benchmarks/results", help="Output directory",
+        "--results-dir",
+        default=env_or_default("BENCHMARK_RESULTS_DIR", "tests/benchmarks/results"),
+        help="Output directory (default: BENCHMARK_RESULTS_DIR)",
     )
     parser.add_argument(
         "--max-retries",

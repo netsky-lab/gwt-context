@@ -171,6 +171,59 @@ def test_run_benchmark_reuses_and_overrides_config(monkeypatch, tmp_path: Path) 
     assert captured["model"] == "cli-model"
 
 
+def test_run_benchmark_uses_cli_results_dir(monkeypatch, tmp_path: Path) -> None:
+    task = BenchmarkTask(
+        id="t1",
+        question="Q",
+        context_chunks=["ctx"],
+        expected_answer="ans",
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_build_client(_config: BenchmarkConfig):
+        captured["results_dir"] = _config.results_dir
+        return object()
+
+    monkeypatch.setattr(harness, "_build_openai_client", fake_build_client)
+    monkeypatch.setattr(harness, "run_task_gwt", lambda *_args, **_kwargs: TaskResult(
+        task_id="t1",
+        mode="gwt",
+        predicted_answer="ans",
+        expected_answer="ans",
+        correct=True,
+        tool_calls=0,
+        total_tokens=1,
+        latency_seconds=0.0,
+    ))
+    monkeypatch.setattr(harness, "run_task_baseline", lambda *_args, **_kwargs: TaskResult(
+        task_id="t1",
+        mode="baseline",
+        predicted_answer="ans",
+        expected_answer="ans",
+        correct=True,
+        tool_calls=0,
+        total_tokens=2,
+        latency_seconds=0.0,
+    ))
+    monkeypatch.setattr(
+        harness,
+        "SentenceTransformerEmbedder",
+        lambda *args, **kwargs: object(),
+    )
+
+    run_benchmark(
+        benchmark_name="ruler_multi_hop",
+        tasks=[task],
+        api_base="https://api.example.com",
+        model="model-x",
+        api_key="k",
+        results_dir=tmp_path,
+    )
+
+    assert captured["results_dir"] == str(tmp_path)
+
+
 def test_run_benchmark_rejects_misconfigured_api_path() -> None:
     with pytest.raises(ValueError, match="relative"):
         run_benchmark(
