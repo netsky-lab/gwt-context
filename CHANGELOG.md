@@ -6,6 +6,9 @@
 - Defined the documentation bootstrap decision and rationale to establish a single source of truth for task onboarding and architecture-boundary enforcement.
 - Added task-planning requirements to record architecture inbounds/outbounds, forbidden imports/coupling, and documentation/changelog update expectations before implementation changes.
 - Updated this changelog with a dated entry preserving reverse-chronological order and decision traceability.
+- Refactored `SelectionBroadcastCycle`, `IngestionPipeline`, and `GoalManager` to accept only interface ports from `interfaces/ports.py`.
+- Added new `GoalManagerPort` protocol and kept vector/store/embedding collaborators as ports in application constructors.
+- Added unit coverage for port-based construction and server composition wiring (`tests/unit/test_application_ports.py`).
 
 ## 2026-04-19
 

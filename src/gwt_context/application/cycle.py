@@ -6,7 +6,6 @@ This is the core "business logic" of the system.
 
 from __future__ import annotations
 
-from gwt_context.application.goal_manager import GoalManager
 from gwt_context.domain.broadcast import BroadcastAssembler
 from gwt_context.domain.competition import CompetitionEngine
 from gwt_context.domain.models import (
@@ -17,8 +16,7 @@ from gwt_context.domain.models import (
     MemoryItem,
 )
 from gwt_context.domain.workspace import GlobalWorkspace
-from gwt_context.infrastructure.storage import SQLiteMemoryStore
-from gwt_context.infrastructure.vector_index import VectorIndex
+from gwt_context.interfaces.ports import GoalManagerPort, MemoryRepositoryPort, VectorSearchPort
 
 
 class PreconsciousBuffer:
@@ -96,9 +94,9 @@ class SelectionBroadcastCycle:
         competition: CompetitionEngine,
         broadcast: BroadcastAssembler,
         buffer: PreconsciousBuffer,
-        store: SQLiteMemoryStore,
-        vector_index: VectorIndex,
-        goal_manager: GoalManager,
+        store: MemoryRepositoryPort,
+        vector_index: VectorSearchPort,
+        goal_manager: GoalManagerPort,
     ) -> None:
         self._ws = workspace
         self._comp = competition
@@ -117,7 +115,7 @@ class SelectionBroadcastCycle:
         return self._buffer
 
     @property
-    def goal_manager(self) -> GoalManager:
+    def goal_manager(self) -> GoalManagerPort:
         return self._gm
 
     def run_competition_dry(self, n_slots: int | None = None) -> CompetitionResult:

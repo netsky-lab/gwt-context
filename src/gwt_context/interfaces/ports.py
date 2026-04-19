@@ -29,6 +29,23 @@ class EmbeddingPort(Protocol):
 
 
 @runtime_checkable
+class GoalManagerPort(Protocol):
+    """Port for goal lookup and activation operations."""
+
+    @property
+    def active_goals(self) -> list[Goal]:
+        ...
+
+    def set_goal(
+        self,
+        description: str,
+        keywords: list[str] | None = None,
+        priority: float = 1.0,
+    ) -> Goal:
+        ...
+
+
+@runtime_checkable
 class MemoryRepositoryPort(Protocol):
     """Persistence/read operations for memory records and goals."""
 

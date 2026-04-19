@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from gwt_context.domain.models import ActivationState, MemoryItem, MemoryType
-from gwt_context.infrastructure.embeddings import EmbeddingProvider
-from gwt_context.infrastructure.storage import SQLiteMemoryStore
-from gwt_context.infrastructure.vector_index import VectorIndex
+from gwt_context.interfaces.ports import EmbeddingPort, MemoryRepositoryPort, VectorSearchPort
 
 
 class IngestionPipeline:
@@ -16,9 +14,9 @@ class IngestionPipeline:
 
     def __init__(
         self,
-        store: SQLiteMemoryStore,
-        vector_index: VectorIndex,
-        embedder: EmbeddingProvider,
+        store: MemoryRepositoryPort,
+        vector_index: VectorSearchPort,
+        embedder: EmbeddingPort,
     ) -> None:
         self._store = store
         self._vi = vector_index

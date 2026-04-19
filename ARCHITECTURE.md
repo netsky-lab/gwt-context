@@ -36,7 +36,7 @@
 - Outbound dependencies:
   - `server.py` wires concrete implementations from `infrastructure` into domain and application.
   - `mcp/*` depends on `cycle`/`ingestion` contracts and domain models exposed via application ports.
-  - `application/*` currently consumes concrete infra implementations in several places (`SQLiteMemoryStore`, `VectorIndex`, `SentenceTransformerEmbedder`) while the port migration is in progress.
+  - `application/*` depends on contracts from `interfaces/ports.py`.
   - `domain/*` stays free of I/O and external integrations.
 
 ## Runtime Control Flow (Current, Implemented)
@@ -49,6 +49,15 @@
 - Add vector in `VectorIndex` and persist index.
 
 ### 2) Broadcast cycle path
+
+| Port | Intent | Owner | Current implementation |
+| --- | --- | --- | --- |
+| `EmbeddingPort` | embed text + dimensions | `infrastructure/embeddings.py` | Used by `GoalManager`/`IngestionPipeline` via interface contracts. |
+| `GoalManagerPort` | goal activation/selection API | `application/goal_manager.py` | Used by `SelectionBroadcastCycle` via interface contracts. |
+| `VectorSearchPort` | add/query/save/remove vector state | `infrastructure/vector_index.py` | Used by `IngestionPipeline`/`SelectionBroadcastCycle` via interface contracts. |
+| `MemoryRepositoryPort` | persistence for memory/goals/broadcasts + links | `infrastructure/storage.py` | Used by `GoalManager`/`IngestionPipeline`/`SelectionBroadcastCycle` via interface contracts. |
+| `IngestionPort` | `ingest`, `query_similar` | `application/ingestion.py` | Exposed to MCP tools. |
+| `CyclePort` | `run`, `run_competition_dry`, `enqueue_for_competition`, `set_goal`, `evict_workspace_item`, `link_items`, `inspect` | `application/cycle.py` | Implemented and called by MCP tools. |
 
 - MCP tool `gwt_broadcast` → `SelectionBroadcastCycle.run`.
 - **Candidate assembly:** from `PreconsciousBuffer.top()` + optional goal-driven vector retrieval in `VectorIndex`.
@@ -67,6 +76,11 @@
 - `BroadcastAssembler` formats workspace content for downstream use.
 
 ### 4) Read and inspection path
+
+- `server.py`: imports concrete infra and registers MCP against concrete runtime services.
+- `application/*`: depends on interface ports for external collaborators.
+- `mcp/tools.py`: typed against `CyclePort`/`IngestionPort`.
+- `mcp/resources.py`: uses cycle-derived in-memory views and repository reads for resource payloads.
 
 - `gwt_query` executes semantic lookup via `IngestionPipeline.query_similar` and returns candidates.
 - `gwt_inspect` and MCP resources expose `workspace`, `buffer`, `goals`, and `stats` through cycle/read model paths.
