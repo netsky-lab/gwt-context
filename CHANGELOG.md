@@ -2,6 +2,12 @@
 
 ## 2026-04-19
 
+- Refactored `SelectionBroadcastCycle`, `IngestionPipeline`, and `GoalManager` to accept only interface ports from `interfaces/ports.py`.
+- Added new `GoalManagerPort` protocol and kept vector/store/embedding collaborators as ports in application constructors.
+- Added unit coverage for port-based construction and server composition wiring (`tests/unit/test_application_ports.py`).
+
+## 2026-04-19
+
 - Added `src/gwt_context/interfaces/ports.py` to define target application/MCP contracts.
 - Synchronized `ARCHITECTURE.md` with current repository boundaries, entrypoint ownership, import directions, and explicit P5/P6 migration blocks.
 - Documented and created baseline `AGENTS.md` and `ROADMAP.md` to unblock architecture/task ordering requirements.

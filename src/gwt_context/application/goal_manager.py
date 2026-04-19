@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from gwt_context.domain.models import Goal
-from gwt_context.infrastructure.embeddings import EmbeddingProvider
-from gwt_context.infrastructure.storage import SQLiteMemoryStore
+from gwt_context.interfaces.ports import EmbeddingPort, MemoryRepositoryPort
 
 
 class GoalManager:
@@ -17,8 +16,8 @@ class GoalManager:
 
     def __init__(
         self,
-        store: SQLiteMemoryStore,
-        embedder: EmbeddingProvider,
+        store: MemoryRepositoryPort,
+        embedder: EmbeddingPort,
     ) -> None:
         self._store = store
         self._embedder = embedder

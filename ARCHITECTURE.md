@@ -52,9 +52,10 @@ src/gwt_context/
 
 | Port | Intent | Owner | Current implementation |
 | --- | --- | --- | --- |
-| `EmbeddingPort` | embed text + dimensions | `infrastructure/embeddings.py` | Used by `GoalManager`/`IngestionPipeline` directly (currently concrete). |
-| `VectorSearchPort` | add/query/save/remove vector state | `infrastructure/vector_index.py` | Used by `IngestionPipeline`/`SelectionBroadcastCycle` directly (currently concrete). |
-| `MemoryRepositoryPort` | persistence for memory/goals/broadcasts + links | `infrastructure/storage.py` | Used by `GoalManager`/`IngestionPipeline`/`SelectionBroadcastCycle` directly (currently concrete). |
+| `EmbeddingPort` | embed text + dimensions | `infrastructure/embeddings.py` | Used by `GoalManager`/`IngestionPipeline` via interface contracts. |
+| `GoalManagerPort` | goal activation/selection API | `application/goal_manager.py` | Used by `SelectionBroadcastCycle` via interface contracts. |
+| `VectorSearchPort` | add/query/save/remove vector state | `infrastructure/vector_index.py` | Used by `IngestionPipeline`/`SelectionBroadcastCycle` via interface contracts. |
+| `MemoryRepositoryPort` | persistence for memory/goals/broadcasts + links | `infrastructure/storage.py` | Used by `GoalManager`/`IngestionPipeline`/`SelectionBroadcastCycle` via interface contracts. |
 | `IngestionPort` | `ingest`, `query_similar` | `application/ingestion.py` | Exposed to MCP tools. |
 | `CyclePort` | `run`, `run_competition_dry`, `enqueue_for_competition`, `set_goal`, `inspect`, `evict_workspace_item`, `link_items` | `application/cycle.py` | Implemented and called by MCP tools. |
 
@@ -75,7 +76,7 @@ src/gwt_context/
 ### Current
 
 - `server.py`: imports concrete infra and registers MCP against concrete runtime services.
-- `application/*`: still imports concrete infra adapters directly.
+- `application/*`: now depends on interface ports for external collaborators.
 - `mcp/tools.py`: now typed against `CyclePort`/`IngestionPort`.
 - `mcp/resources.py`: still uses cycle-derived in-memory views and repository reads for resource payloads.
 
