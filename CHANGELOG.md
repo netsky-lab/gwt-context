@@ -2,6 +2,12 @@
 
 ## 2026-04-19
 
+- Re-aligned onboarding docs to a single source of truth (`AGENTS.md`, `ARCHITECTURE.md`, `ROADMAP.md`) with explicit architecture-boundary checks captured in task planning.
+- Updated baseline docs to current test count and command expectations (`78` passing tests; `npm test` documented as task verification entrypoint).
+- Re-added/retained explicit onboarding checklist requirements for forbidden imports, coupling checks, and rollback conditions.
+
+## 2026-04-19
+
 - Added repository-level shared onboarding docs: `AGENTS.md`, `ROADMAP.md`, and `ARCHITECTURE.md`.
 - Defined the documentation bootstrap decision and rationale to establish a single source of truth for task onboarding and architecture-boundary enforcement.
 - Added task-planning requirements to record architecture inbounds/outbounds, forbidden imports/coupling, and documentation/changelog update expectations before implementation changes.

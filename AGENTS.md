@@ -9,19 +9,24 @@
 
 Before implementing any task, **the task plan must read this checklist first**:
 
-1. Read `ARCHITECTURE.md`.
+1. Read `AGENTS.md`, `ARCHITECTURE.md`, `ROADMAP.md`, and `CHANGELOG.md`.
 2. Record in the task plan:
    - module inbounds/outbounds and expected owners,
    - forbidden imports for that task,
    - forbidden coupling points being preserved or removed,
    - test impact and rollback condition.
+3. Record architecture-boundary checks to run before implementation and before merge:
+   - verify MCP layer does not import private/internals from domain/infrastructure,
+   - verify application changes keep direct concrete infrastructure dependencies out of application constructors,
+   - record explicit pass/fail for each check in task notes.
 3. Start the task only after these checks are captured.
 
 ## Environment and Tooling (Verified)
 
 - Runtime: Python `>=3.11` (`pyproject.toml`).
-- Stack: Python + MCP + pytest + ruff + mypy (strict mode) from `pyproject.toml`.
+- Stack: Python + MCP runtime + `npm test` verification command + `ruff` + `mypy` (strict mode).
 - Setup:
+  - `npm install`
   - `pip install -e .`
   - `pip install -e "[dev]"` (pytest/ruff/mypy)
   - `pip install -e "[bench]"` (benchmarks)

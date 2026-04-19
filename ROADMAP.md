@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 74 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 78 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -11,6 +11,10 @@
   - read `ARCHITECTURE.md` first,
   - record in/out boundaries, forbidden imports, and forbidden coupling checks,
   - include explicit pass/fail acceptance before implementation.
+- Architecture-boundary checks must be rerun after implementation:
+  - application code should consume interfaces from `interfaces/ports.py`,
+  - MCP handlers should use only declared tool/resource contracts,
+  - task logs must record each check as pass/fail in the task plan.
 
 ## Short-term
 

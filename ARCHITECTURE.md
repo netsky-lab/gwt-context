@@ -32,6 +32,14 @@
 
 ## Inbounds, Outbounds, and Boundaries
 
+### Onboarding canonical checks
+
+- Before any change, read `AGENTS.md`, `ROADMAP.md`, and this file before touching implementation.
+- Boundaries for review:
+  - No application module imports concrete infrastructure internals through direct implementation imports.
+  - MCP modules (`tools.py`, `resources.py`, `prompts.py`) consume only public contracts and public domain/application state models.
+  - `server.py` remains the only composition root that wires concrete infrastructure types.
+
 - Inbound to the service: MCP clients calling tools/resources (`gwt_store`, `gwt_broadcast`, `gwt_query`, `gwt_set_goal`, etc.).
 - Outbound dependencies:
   - `server.py` wires concrete implementations from `infrastructure` into domain and application.
