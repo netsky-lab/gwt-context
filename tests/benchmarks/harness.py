@@ -2,18 +2,16 @@
 
 Runs LLM + GWT tools against benchmark tasks, compares with baseline (no GWT).
 Supports any OpenAI-compatible API (Qwen via vLLM, Claude, etc.).
-
-Usage:
-    python -m tests.benchmarks.ruler_multi_hop --api-base http://localhost:8000/v1 --model qwen3.5
-    python -m tests.benchmarks.longbench_pro --api-base http://localhost:8000/v1 --model qwen3.5
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +29,10 @@ from gwt_context.infrastructure.config import GWTConfig
 from gwt_context.infrastructure.embeddings import SentenceTransformerEmbedder
 from gwt_context.infrastructure.storage import SQLiteMemoryStore
 from gwt_context.infrastructure.vector_index import VectorIndex
+from tests.benchmarks.config import (
+    BenchmarkConfig,
+    load_benchmark_config,
+)
 
 # --- GWT Tool Definitions (OpenAI function calling format) ---
 
@@ -129,12 +131,14 @@ GWT_TOOLS = [
 
 # --- Data classes ---
 
+
 @dataclass
 class BenchmarkTask:
     """A single benchmark task."""
+
     id: str
     question: str
-    context_chunks: list[str]  # Document chunks to ingest
+    context_chunks: list[str]
     expected_answer: str
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -142,8 +146,9 @@ class BenchmarkTask:
 @dataclass
 class TaskResult:
     """Result of running one task."""
+
     task_id: str
-    mode: str  # "gwt" or "baseline"
+    mode: str
     predicted_answer: str
     expected_answer: str
     correct: bool
@@ -157,9 +162,16 @@ class TaskResult:
 @dataclass
 class BenchmarkReport:
     """Aggregated benchmark results."""
+
     benchmark_name: str
     model: str
     results: list[TaskResult] = field(default_factory=list)
+    run_id: str = ""
+    run_timestamp: str = ""
+    api_base: str = ""
+    results_dir: str = ""
+    config_hash: str = ""
+    task_count: int = 0
 
     @property
     def gwt_results(self) -> list[TaskResult]:
@@ -192,11 +204,15 @@ class BenchmarkReport:
     def summary(self) -> str:
         lines = [
             f"=== {self.benchmark_name} | model={self.model} ===",
+            f"Run ID: {self.run_id}",
+            f"Timestamp: {self.run_timestamp}",
             f"Tasks: {len(self.gwt_results)} GWT, {len(self.baseline_results)} baseline",
             f"GWT accuracy:      {self.gwt_accuracy:.1%}",
             f"Baseline accuracy: {self.baseline_accuracy:.1%}",
             f"Improvement:       {self.improvement:+.1f}%",
         ]
+        if self.task_count:
+            lines.append(f"Task count: {self.task_count}")
         if self.gwt_results:
             avg_calls = sum(r.tool_calls for r in self.gwt_results) / len(self.gwt_results)
             avg_latency = sum(r.latency_seconds for r in self.gwt_results) / len(self.gwt_results)
@@ -209,6 +225,12 @@ class BenchmarkReport:
         data = {
             "benchmark_name": self.benchmark_name,
             "model": self.model,
+            "run_id": self.run_id,
+            "run_timestamp": self.run_timestamp,
+            "api_base": self.api_base,
+            "results_dir": self.results_dir,
+            "config_hash": self.config_hash,
+            "task_count": self.task_count,
             "gwt_accuracy": self.gwt_accuracy,
             "baseline_accuracy": self.baseline_accuracy,
             "improvement": self.improvement,
@@ -227,11 +249,11 @@ class BenchmarkReport:
                 for r in self.results
             ],
         }
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2)
+        _write_json_atomically(path, data)
 
 
 # --- GWT Session ---
+
 
 class GWTSession:
     """A fresh GWT system for one benchmark task."""
@@ -264,8 +286,13 @@ class GWTSession:
             embedder=self._embedder,
         )
         self._cycle = SelectionBroadcastCycle(
-            workspace=workspace, competition=competition, broadcast=broadcast,
-            buffer=buffer, store=self._store, vector_index=self._vi, goal_manager=goal_manager,
+            workspace=workspace,
+            competition=competition,
+            broadcast=broadcast,
+            buffer=buffer,
+            store=self._store,
+            vector_index=self._vi,
+            goal_manager=goal_manager,
         )
 
     def execute_tool(self, name: str, args: dict[str, Any]) -> str:
@@ -273,38 +300,42 @@ class GWTSession:
         if name == "gwt_store":
             mt = MemoryType(args.get("memory_type", "semantic"))
             item = self._ingestion.ingest(
-                content=args["content"], memory_type=mt,
-                source="benchmark", link_to=args.get("link_to"),
+                content=args["content"],
+                memory_type=mt,
+                source="benchmark",
+                link_to=args.get("link_to"),
             )
             self._cycle.buffer.push(item)
             return json.dumps({"id": item.id, "status": "stored"})
 
-        elif name == "gwt_set_goal":
+        if name == "gwt_set_goal":
             goal = self._cycle.goal_manager.set_goal(
                 description=args["description"],
                 keywords=args.get("keywords"),
             )
             return json.dumps({"goal_id": goal.id, "status": "goal set"})
 
-        elif name == "gwt_broadcast":
+        if name == "gwt_broadcast":
             record = self._cycle.run()
             return record.formatted_content
 
-        elif name == "gwt_query":
+        if name == "gwt_query":
             items = self._ingestion.query_similar(
-                query=args["query"], k=args.get("k", 5),
+                query=args["query"],
+                k=args.get("k", 5),
             )
-            return json.dumps([
-                {"id": i.id, "content": i.content, "activation": round(i.activation_level, 3)}
-                for i in items
-            ])
+            return json.dumps(
+                [
+                    {"id": i.id, "content": i.content, "activation": round(i.activation_level, 3)}
+                    for i in items
+                ]
+            )
 
-        elif name == "gwt_link":
+        if name == "gwt_link":
             self._store.add_link(args["source_id"], args["target_id"])
             return json.dumps({"status": "linked"})
 
-        else:
-            return json.dumps({"error": f"unknown tool: {name}"})
+        return json.dumps({"error": f"unknown tool: {name}"})
 
     @property
     def workspace_text(self) -> str:
@@ -313,6 +344,7 @@ class GWTSession:
     def close(self) -> None:
         self._store.close()
         import shutil
+
         shutil.rmtree(self._tmp, ignore_errors=True)
 
 
@@ -349,7 +381,6 @@ def run_task_gwt(
     total_tokens = 0
 
     try:
-        # Pre-load context chunks
         for chunk in task.context_chunks:
             session.execute_tool("gwt_store", {"content": chunk})
 
@@ -375,13 +406,14 @@ def run_task_gwt(
                     tool_call_count += 1
                     args = json.loads(tc.function.arguments)
                     result = session.execute_tool(tc.function.name, args)
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": result,
-                    })
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": result,
+                        }
+                    )
             else:
-                # Model produced a text response
                 answer_text = choice.message.content or ""
                 predicted = _extract_answer(answer_text)
                 correct = _check_answer(predicted, task.expected_answer)
@@ -398,21 +430,25 @@ def run_task_gwt(
                     workspace_at_answer=session.workspace_text,
                 )
 
-        # Max rounds reached
         return TaskResult(
-            task_id=task.id, mode="gwt",
+            task_id=task.id,
+            mode="gwt",
             predicted_answer="[max tool rounds reached]",
             expected_answer=task.expected_answer,
-            correct=False, tool_calls=tool_call_count,
+            correct=False,
+            tool_calls=tool_call_count,
             total_tokens=total_tokens,
             latency_seconds=time.time() - start,
             error="max_tool_rounds",
         )
     except Exception as e:
         return TaskResult(
-            task_id=task.id, mode="gwt",
-            predicted_answer="", expected_answer=task.expected_answer,
-            correct=False, tool_calls=tool_call_count,
+            task_id=task.id,
+            mode="gwt",
+            predicted_answer="",
+            expected_answer=task.expected_answer,
+            correct=False,
+            tool_calls=tool_call_count,
             total_tokens=total_tokens,
             latency_seconds=time.time() - start,
             error=str(e),
@@ -428,7 +464,6 @@ def run_task_baseline(
 ) -> TaskResult:
     """Run a single task WITHOUT GWT — all context in prompt."""
     start = time.time()
-
     context = "\n\n".join(task.context_chunks)
     messages = [
         {
@@ -452,46 +487,162 @@ def run_task_baseline(
         correct = _check_answer(predicted, task.expected_answer)
 
         return TaskResult(
-            task_id=task.id, mode="baseline",
+            task_id=task.id,
+            mode="baseline",
             predicted_answer=predicted,
             expected_answer=task.expected_answer,
-            correct=correct, tool_calls=0,
+            correct=correct,
+            tool_calls=0,
             total_tokens=total_tokens,
             latency_seconds=time.time() - start,
         )
     except Exception as e:
         return TaskResult(
-            task_id=task.id, mode="baseline",
-            predicted_answer="", expected_answer=task.expected_answer,
-            correct=False, tool_calls=0, total_tokens=0,
+            task_id=task.id,
+            mode="baseline",
+            predicted_answer="",
+            expected_answer=task.expected_answer,
+            correct=False,
+            tool_calls=0,
+            total_tokens=0,
             latency_seconds=time.time() - start,
             error=str(e),
         )
 
 
+def _safe_filename_component(value: str) -> str:
+    """Normalize values used in file names."""
+    return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in value)
+
+
+def _report_config_hash(config: BenchmarkConfig) -> str:
+    payload = {
+        "api_base": config.api_base,
+        "model": config.model,
+        "timeout_seconds": config.timeout_seconds,
+        "max_retries": config.max_retries,
+        "concurrency": config.concurrency,
+        "api_headers": config.api_headers,
+        "results_dir": config.results_dir,
+    }
+    return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
+
+
+def _write_json_atomically(path: Path, data: dict[str, Any]) -> None:
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    temp_path.replace(path)
+
+
+def _build_openai_client(config: BenchmarkConfig) -> OpenAI:
+    kwargs = {
+        "api_key": config.api_key,
+        "base_url": config.api_base,
+        "timeout": config.timeout_seconds,
+        "max_retries": config.max_retries,
+    }
+    if config.api_headers:
+        kwargs["default_headers"] = config.api_headers
+    return OpenAI(**kwargs)
+
+
+def _resolve_benchmark_config(
+    *,
+    base_config: BenchmarkConfig | None,
+    api_base: str | None,
+    model: str | None,
+    api_key: str,
+    api_path: str | None,
+    timeout_seconds: str | float | int | None,
+    api_headers: str | None,
+    results_dir: Path | str,
+    max_retries: int | None,
+    concurrency: int | None,
+) -> BenchmarkConfig:
+    if base_config is None:
+        return load_benchmark_config(
+            api_base=api_base,
+            model=model,
+            api_key=api_key,
+            api_path=api_path,
+            timeout_seconds=timeout_seconds,
+            api_headers=api_headers,
+            results_dir=results_dir,
+            max_retries=max_retries,
+            concurrency=concurrency,
+        )
+
+    return load_benchmark_config(
+        api_base=api_base or base_config.api_base,
+        model=model or base_config.model,
+        api_key=api_key or base_config.api_key,
+        api_path=api_path if api_path is not None else base_config.api_path,
+        timeout_seconds=(
+            timeout_seconds if timeout_seconds is not None else base_config.timeout_seconds
+        ),
+        api_headers=api_headers if api_headers is not None else json.dumps(base_config.api_headers),
+        results_dir=results_dir if results_dir is not None else base_config.results_dir,
+        max_retries=max_retries if max_retries is not None else base_config.max_retries,
+        concurrency=concurrency if concurrency is not None else base_config.concurrency,
+    )
+
+
 def run_benchmark(
     benchmark_name: str,
     tasks: list[BenchmarkTask],
-    api_base: str,
-    model: str,
+    *,
+    api_base: str | None = None,
+    model: str | None = None,
     api_key: str = "not-needed",
+    api_path: str | None = None,
+    timeout_seconds: str | float | int | None = None,
+    api_headers: str | None = None,
+    results_dir: Path | str = Path("tests/benchmarks/results"),
     max_tasks: int | None = None,
-    results_dir: Path = Path("tests/benchmarks/results"),
+    max_retries: int | None = None,
+    concurrency: int | None = None,
+    config: BenchmarkConfig | None = None,
 ) -> BenchmarkReport:
     """Run full benchmark: GWT + baseline for each task."""
-    client = OpenAI(base_url=api_base, api_key=api_key)
+    config = _resolve_benchmark_config(
+        base_config=config,
+        api_base=api_base,
+        model=model,
+        api_key=api_key,
+        api_path=api_path,
+        timeout_seconds=timeout_seconds,
+        api_headers=api_headers,
+        results_dir=results_dir,
+        max_retries=max_retries,
+        concurrency=concurrency,
+    )
+
+    client = _build_openai_client(config)
     embedder = SentenceTransformerEmbedder()
 
-    if max_tasks:
+    if max_tasks is not None:
+        if max_tasks <= 0:
+            raise ValueError("--max-tasks must be greater than 0")
         tasks = tasks[:max_tasks]
 
-    report = BenchmarkReport(benchmark_name=benchmark_name, model=model)
+    run_config_hash = _report_config_hash(config)
+    run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
+    report = BenchmarkReport(
+        benchmark_name=benchmark_name,
+        model=config.model,
+        run_id=f"{run_timestamp}_{run_config_hash}",
+        run_timestamp=run_timestamp,
+        api_base=config.api_base,
+        results_dir=config.results_dir,
+        config_hash=run_config_hash,
+        task_count=len(tasks),
+    )
 
     for i, task in enumerate(tasks):
         print(f"[{i+1}/{len(tasks)}] Task {task.id}...")
 
-        # GWT mode
-        result_gwt = run_task_gwt(client, model, task, embedder)
+        result_gwt = run_task_gwt(client, config.model, task, embedder)
         report.results.append(result_gwt)
         status = "OK" if result_gwt.correct else "WRONG"
         print(
@@ -499,8 +650,7 @@ def run_benchmark(
             f"{status} ({result_gwt.tool_calls} calls, {result_gwt.latency_seconds:.1f}s)"
         )
 
-        # Baseline mode
-        result_bl = run_task_baseline(client, model, task)
+        result_bl = run_task_baseline(client, config.model, task)
         report.results.append(result_bl)
         status = "OK" if result_bl.correct else "WRONG"
         print(f"  Baseline: {status} ({result_bl.latency_seconds:.1f}s)")
@@ -508,21 +658,27 @@ def run_benchmark(
     print()
     print(report.summary())
 
-    # Save results
-    ts = time.strftime("%Y%m%d_%H%M%S")
-    report.save(results_dir / f"{benchmark_name}_{model}_{ts}.json")
+    # Keep filename deterministic and non-overlapping by using run metadata.
+    out_dir = Path(config.results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe_model = _safe_filename_component(config.model)
+    filename_id = f"{report.run_timestamp}_{report.config_hash}"
+    output_path = out_dir / f"{benchmark_name}_{safe_model}_{filename_id}.json"
+    report.save(output_path)
+
+    print(f"Saved: {output_path}")
 
     return report
 
 
 # --- Helpers ---
 
+
 def _extract_answer(text: str) -> str:
     """Extract answer after 'ANSWER:' marker."""
     text = text.strip()
     if "ANSWER:" in text:
         return text.split("ANSWER:")[-1].strip()
-    # Fallback: last line
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     return lines[-1] if lines else text
 
@@ -531,5 +687,4 @@ def _check_answer(predicted: str, expected: str) -> bool:
     """Check if predicted answer matches expected (case-insensitive, substring)."""
     predicted = predicted.lower().strip()
     expected = expected.lower().strip()
-    # Exact match or expected is contained in predicted
     return expected in predicted or predicted in expected

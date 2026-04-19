@@ -24,7 +24,7 @@ import hashlib
 import random
 from pathlib import Path
 
-from tests.benchmarks.config import env_or_default, load_local_env
+from tests.benchmarks.config import env_or_default, load_local_env, parse_api_headers
 from tests.benchmarks.harness import BenchmarkTask, run_benchmark
 
 # --- Fact templates for procedural generation ---
@@ -225,6 +225,22 @@ def main():
         help="API key (default: BENCHMARK_API_KEY from .env/env)",
     )
     parser.add_argument(
+        "--api-path",
+        default=env_or_default("BENCHMARK_API_PATH", "/v1"),
+        help="Relative API path to append to api base (default: BENCHMARK_API_PATH)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=env_or_default("BENCHMARK_TIMEOUT_SECONDS", "30"),
+        help="Request timeout seconds (default: BENCHMARK_TIMEOUT_SECONDS)",
+    )
+    parser.add_argument(
+        "--api-headers",
+        default=env_or_default("BENCHMARK_API_HEADERS"),
+        help="Optional extra headers for API calls (JSON or comma-separated key=value)",
+    )
+    parser.add_argument(
         "--hops", nargs="+", type=int, default=[2, 3], help="Number of hops to test",
     )
     parser.add_argument(
@@ -241,6 +257,18 @@ def main():
     parser.add_argument(
         "--results-dir", default="tests/benchmarks/results", help="Output directory",
     )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=int(env_or_default("BENCHMARK_MAX_RETRIES", "2")),
+        help="OpenAI client retries (default: BENCHMARK_MAX_RETRIES)",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=int(env_or_default("BENCHMARK_CONCURRENCY", "1")),
+        help="Benchmark task execution concurrency (currently reserved; default: 1)",
+    )
     args = parser.parse_args()
 
     if not args.api_base or not args.model:
@@ -248,6 +276,11 @@ def main():
             "provide --api-base and --model, or set "
             "BENCHMARK_API_BASE and BENCHMARK_MODEL in .env",
         )
+    if args.api_headers:
+        try:
+            parse_api_headers(args.api_headers)
+        except ValueError as exc:
+            parser.error(str(exc))
 
     tasks = generate_tasks(
         n_hops_list=args.hops,
@@ -267,8 +300,13 @@ def main():
         api_base=args.api_base,
         model=args.model,
         api_key=args.api_key,
+        api_path=args.api_path,
+        timeout_seconds=args.timeout,
+        api_headers=args.api_headers,
         max_tasks=args.max_tasks,
         results_dir=Path(args.results_dir),
+        max_retries=args.max_retries,
+        concurrency=args.concurrency,
     )
 
 

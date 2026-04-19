@@ -2,6 +2,15 @@
 
 ## 2026-04-19
 
+- Stabilized benchmark harness/runtime configuration in `tests/benchmarks/config.py` with explicit CLI/env validation (`BENCHMARK_API_BASE`, `BENCHMARK_API_PATH`, `BENCHMARK_MODEL`, timeout, headers, retries, concurrency, results dir).
+- Updated `tests/benchmarks/harness.py` to construct OpenAI clients from deterministic config, compute stable run metadata and write JSON results atomically with deterministic filenames into a single canonical results directory.
+- Extended benchmark CLI entrypoints (`tests/benchmarks/ruler_multi_hop.py`, `tests/benchmarks/longbench_pro.py`) with `--api-path`, `--timeout`, `--api-headers`, `--max-retries`, and `--concurrency` plus documented run-dir behavior.
+- Added reproducibility documentation (`tests/benchmarks/README.md`) and refreshed `.env.example`/root `README.md` benchmark setup guidance.
+- Added unit coverage for benchmark config parsing and harness persistence (`tests/unit/test_benchmark_config.py`, `tests/unit/test_benchmark_harness.py`).
+
+
+## 2026-04-19
+
 - Re-aligned onboarding docs to a single source of truth (`AGENTS.md`, `ARCHITECTURE.md`, `ROADMAP.md`) with explicit architecture-boundary checks captured in task planning.
 - Updated baseline docs to current test count and command expectations (`78` passing tests; `npm test` documented as task verification entrypoint).
 - Re-added/retained explicit onboarding checklist requirements for forbidden imports, coupling checks, and rollback conditions.
