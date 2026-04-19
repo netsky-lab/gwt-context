@@ -2,6 +2,13 @@
 
 ## 2026-04-19
 
+- Added repository-level shared onboarding docs: `AGENTS.md`, `ROADMAP.md`, and `ARCHITECTURE.md`.
+- Defined the documentation bootstrap decision and rationale to establish a single source of truth for task onboarding and architecture-boundary enforcement.
+- Added task-planning requirements to record architecture inbounds/outbounds, forbidden imports/coupling, and documentation/changelog update expectations before implementation changes.
+- Updated this changelog with a dated entry preserving reverse-chronological order and decision traceability.
+
+## 2026-04-19
+
 - Added `src/gwt_context/interfaces/ports.py` to define target application/MCP contracts.
 - Synchronized `ARCHITECTURE.md` with current repository boundaries, entrypoint ownership, import directions, and explicit P5/P6 migration blocks.
 - Documented and created baseline `AGENTS.md` and `ROADMAP.md` to unblock architecture/task ordering requirements.
