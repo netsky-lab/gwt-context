@@ -1,187 +1,116 @@
-# Architecture and Boundaries (Target + Current Delta)
+# Architecture
 
-## 1) Purpose
+## Purpose
 
-This document is the target clean-architecture contract for `gwt-context` and the minimum change set needed for upcoming P5/P6 refactors. Current behavior remains runtime-compatible while moving toward strict layer boundaries.
+`gwt-context` is a Python MCP server that maintains bounded working memory for LLM interactions using a selection-broadcast cycle. The implementation is organized in explicit layers: domain, application, infrastructure, MCP interface, and a composition root.
 
-## 2) Module map (current repo)
+## Package Layout
 
-```text
-src/gwt_context/
-├── domain/                # pure business rules and entities (no I/O)
-│   ├── models.py
-│   ├── workspace.py
-│   ├── competition.py
-│   ├── specialists.py
-│   └── broadcast.py
-├── application/           # orchestration and service workflows
-│   ├── cycle.py
-│   ├── ingestion.py
-│   └── goal_manager.py
-├── infrastructure/        # concrete adapters for storage/vector/embeddings
-│   ├── config.py
-│   ├── embeddings.py
-│   ├── storage.py
-│   └── vector_index.py
-├── interfaces/            # boundary contracts (ports)
-│   └── ports.py
-├── mcp/                  # transport protocol (tools/resources/prompts)
-│   ├── tools.py
-│   ├── resources.py
-│   └── prompts.py
-├── server.py              # composition root / bootstrap
-└── __main__.py            # entrypoint delegating to server main()
-```
+- `src/gwt_context/domain/`
+  - `models.py`: `MemoryItem`, `Goal`, `BroadcastRecord`, enums.
+  - `workspace.py`: `GlobalWorkspace`, `WorkspaceSlot`.
+  - `specialists.py`: scoring specialists used by arbitration.
+  - `competition.py`: `CompetitionEngine` and result contracts.
+  - `broadcast.py`: `BroadcastAssembler`.
+- `src/gwt_context/application/`
+  - `ingestion.py`: `IngestionPipeline` (content -> embedding -> persistence/index).
+  - `goal_manager.py`: goal activation/modulation state.
+  - `cycle.py`: `PreconsciousBuffer`, `SelectionBroadcastCycle` orchestration.
+- `src/gwt_context/infrastructure/`
+  - `config.py`: `GWTConfig` and env-backed runtime config.
+  - `storage.py`: `SQLiteMemoryStore` persistence.
+  - `vector_index.py`: numpy-based cosine similarity index.
+  - `embeddings.py`: `EmbeddingProvider` + `SentenceTransformerEmbedder`.
+- `src/gwt_context/interfaces/`
+  - `ports.py`: boundary protocols (`CyclePort`, `IngestionPort`, `MemoryRepositoryPort`, etc.).
+- `src/gwt_context/mcp/`
+  - `tools.py`: MCP tool surface.
+  - `resources.py`: MCP resources for read-only state.
+  - `prompts.py`: prompt text.
+- `src/gwt_context/server.py`: composition root and startup.
+- `src/gwt_context/__main__.py`: `python -m gwt_context` bootstrap.
 
-## 3) One-way dependency rules (normative)
+## Inbounds, Outbounds, and Boundaries
 
-- `domain` MUST NOT depend on `application`, `infrastructure`, `mcp`, or `server`.
-- `application` MAY depend on `domain` and MUST depend on `interfaces` for external capabilities.
-- `infrastructure` MAY depend on `domain` and MAY implement `interfaces`.
-- `mcp` MAY depend on `application` services and/or `interfaces`, NOT on concrete `infrastructure`.
-- `server` MAY depend on all layers for composition and object wiring only.
+- Inbound to the service: MCP clients calling tools/resources (`gwt_store`, `gwt_broadcast`, `gwt_query`, `gwt_set_goal`, etc.).
+- Outbound dependencies:
+  - `server.py` wires concrete implementations from `infrastructure` into domain and application.
+  - `mcp/*` depends on `cycle`/`ingestion` contracts and domain models exposed via application ports.
+  - `application/*` currently consumes concrete infra implementations in several places (`SQLiteMemoryStore`, `VectorIndex`, `SentenceTransformerEmbedder`) while the port migration is in progress.
+  - `domain/*` stays free of I/O and external integrations.
 
-### Forbidden imports (hard checks)
+## Runtime Control Flow (Current, Implemented)
 
-- `application/*` importing `infrastructure/*` concrete classes
-- `mcp/*` importing `infrastructure/*` concrete classes
-- `domain/*` importing `application/*` or `infrastructure/*`
-- direct mutation of MCP-facing state from domain models
+### 1) Ingest path
 
-## 4) Required ports in target
+- MCP tool `gwt_store` → `IngestionPipeline.ingest`.
+- Build `MemoryItem` + compute embedding.
+- Write item + goal linkage to `SQLiteMemoryStore`.
+- Add vector in `VectorIndex` and persist index.
 
-| Port | Intent | Owner | Current implementation |
-| --- | --- | --- | --- |
-| `EmbeddingPort` | embed text + dimensions | `infrastructure/embeddings.py` | Used by `GoalManager`/`IngestionPipeline` directly (currently concrete). |
-| `VectorSearchPort` | add/query/save/remove vector state | `infrastructure/vector_index.py` | Used by `IngestionPipeline`/`SelectionBroadcastCycle` directly (currently concrete). |
-| `MemoryRepositoryPort` | persistence for memory/goals/broadcasts + links | `infrastructure/storage.py` | Used by `GoalManager`/`IngestionPipeline`/`SelectionBroadcastCycle` directly (currently concrete). |
-| `IngestionPort` | `ingest`, `query_similar` | `application/ingestion.py` | Exposed to MCP tools. |
-| `CyclePort` | `run`, `run_competition_dry`, `enqueue_for_competition`, `set_goal`, `inspect`, `evict_workspace_item`, `link_items` | `application/cycle.py` | Implemented and called by MCP tools. |
+### 2) Broadcast cycle path
 
-## 5) Composition root responsibilities
+- MCP tool `gwt_broadcast` → `SelectionBroadcastCycle.run`.
+- **Candidate assembly:** from `PreconsciousBuffer.top()` + optional goal-driven vector retrieval in `VectorIndex`.
+- **Score:** `CompetitionEngine` runs all specialists and applies goal modulation.
+- **Compete:** winners are admitted to `GlobalWorkspace`; evicted items return to preconscious.
+- **Format:** `BroadcastAssembler.assemble` produces a broadcast payload (`BroadcastRecord`) and writes it to storage.
 
-- `server.py` is the single composition root.
-- `__main__.py` only invokes `server.main()`.
-- `server.py` owns:
-  - loading config (`GWTConfig`)
-  - concrete infra construction (`SQLiteMemoryStore`, `VectorIndex`, `SentenceTransformerEmbedder`)
-  - constructing domain and application services
-  - state restore on startup (`_restore_state`)
-  - MCP registration
-- `server.py` must not contain scoring/ranking policy or orchestration semantics.
+### 3) Explicit key data path
 
-## 6) Import/ownership matrix
+`storage load -> scoring -> competition -> workspace -> broadcast`
 
-### Current
+- Storage-backed records provide candidate set material.
+- Specialists score candidates.
+- `CompetitionEngine` arbitrates winners.
+- Winners update `GlobalWorkspace`.
+- `BroadcastAssembler` formats workspace content for downstream use.
 
-- `server.py`: imports concrete infra and registers MCP against concrete runtime services.
-- `application/*`: still imports concrete infra adapters directly.
-- `mcp/tools.py`: now typed against `CyclePort`/`IngestionPort`.
-- `mcp/resources.py`: still uses cycle-derived in-memory views and repository reads for resource payloads.
+### 4) Read and inspection path
 
-### Target after P5/P6
+- `gwt_query` executes semantic lookup via `IngestionPipeline.query_similar` and returns candidates.
+- `gwt_inspect` and MCP resources expose `workspace`, `buffer`, `goals`, and `stats` through cycle/read model paths.
 
-- `application/*` depends only on `interfaces` ports + `domain`.
-- `mcp/*` depends only on `application` services/ports.
-- `server.py` remains the only place with concrete adapter creation.
+## Persistence and I/O Model
 
-## 7) `SelectionBroadcastCycle` boundary-facing behavior
+### Memory and goals
 
-The following cycle behaviors are the current application API contract used by MCP:
+- Persistent store: `memory.db` (SQLite) under `GWT_DATA_DIR`.
+- Tables are created and managed by `SQLiteMemoryStore`:
+  - `memory_items`, `goals`, `links`, `broadcasts`.
 
-- `run()`
-- `run_competition_dry(n_slots: int | None)`
-- `enqueue_for_competition(item)`
-- `set_goal(description, keywords, priority)`
-- `evict_workspace_item(item_id)`
-- `link_items(source_id, target_id)`
-- `inspect(target="workspace|buffer|goals|stats")`
+### Vector index
 
-## 8) Critical flow sequences (current + target)
+- Numpy files under `GWT_DATA_DIR/` from `GWT_VECTOR_INDEX_PATH`:
+  - metadata JSON (`.json`) and vectors (`.npy`).
+- Rebuild behavior: on startup, if vector index is empty but DB has embedded items, `server._restore_state` repopulates and saves vectors.
 
-### 8.1 Ingest + candidacy
+### Model artifacts
 
-```mermaid
-sequenceDiagram
-  participant Tool as MCP Tool
-  participant AppIngest as application.ingestion
-  participant Cycle as application.cycle
-  participant Store as infrastructure.storage
-  participant VI as infrastructure.vector_index
+- Embeddings generated by `SentenceTransformerEmbedder` from `GWT_EMBEDDING_MODEL` and dimensions in `GWT_EMBEDDING_DIM`.
 
-  Tool->>AppIngest: ingest(content, memory_type, ...)
-  AppIngest->>VI: embed + add
-  AppIngest->>Store: save_item
-  AppIngest-->>Cycle: enqueue_for_competition(item)
-  Cycle->>Cycle: next run() gathers candidates
-```
+## Config and Environment Inputs
 
-### 8.2 Link update and in-session consistency
+From `src/gwt_context/infrastructure/config.py` and `.env` loading:
+- `GWT_WORKSPACE_CAPACITY`
+- `GWT_BUFFER_SIZE`
+- `GWT_GOAL_MODULATION`
+- `GWT_EMBEDDING_MODEL`
+- `GWT_EMBEDDING_DIM`
+- `GWT_DATA_DIR`
+- `GWT_MAX_BROADCAST_TOKENS`
+- `GWT_MAX_VECTOR_ELEMENTS`
+- `GWT_DB_PATH` (override path if set)
+- `GWT_VECTOR_INDEX_PATH` (override path if set)
 
-```mermaid
-sequenceDiagram
-  participant User as Tool
-  participant Cycle as application.cycle
-  participant Store as infrastructure.storage
-  User->>Cycle: link_items(a, b)
-  Cycle->>Store: add_link(a, b)
-  Cycle->>Cycle: sync_bidirectional_link(a, b)
-  Note over Cycle: updates live workspace/buffer object graphs when loaded
-```
+Defaults are applied when vars are absent via `GWTConfig.from_env()`.
 
-### 8.3 Tool inspect path
+## Tested Boundaries and Entry Points
 
-```mermaid
-sequenceDiagram
-  participant User as Tool call
-  participant Tool as gwt_inspect
-  participant Cycle as application.cycle
-  User->>Tool: inspect("stats")
-  Tool->>Cycle: inspect(target="stats")
-  Cycle-->>Tool: dict read-model snapshot
-  Tool-->>User: serializable JSON-like payload
-```
-
-## 9) Migration state / blocked items
-
-- **P5 blocked items**
-  - `application/cycle.py`, `application/ingestion.py`, `application/goal_manager.py` still use concrete infra classes in constructors and internals.
-  - Adapters should be passed in as ports from `interfaces/ports.py`.
-
-- **P6 partially blocked**
-  - `mcp/tools.py` is port-oriented.
-  - `mcp/resources.py` still inspects cycle state shape (`workspace`, `buffer`, `goal_manager`) and repository read models to render resources.
-  - This is acceptable in target-gap status while P6 replaces it with explicit read-model services.
-
-- **Enforcement plan**
-  - Before each P5/P6 PR:
-    - no forbidden imports (section 3)
-    - all composition happens in `server.py`
-    - MCP handlers call only declared port methods
-    - tests include delegation checks for MCP boundary
-
-## 10) ADR index
-
-### ADR-1: Port-first dependency strategy
-- Date: 2026-04-19
-- Decision: introduce and use `interfaces/ports.py` for application and MCP boundaries.
-- Rationale: decouple orchestration from adapter classes.
-- Consequence: constructor signatures must migrate to protocols.
-
-### ADR-2: Composition root ownership
-- Date: 2026-04-19
-- Decision: only `server.py` composes concrete implementations.
-- Rationale: deterministic startup and easier testing via fake ports.
-- Consequence: all ad-hoc instantiation outside composition root is technical debt.
-
-### ADR-3: Storage/search/vector boundary separation
-- Date: 2026-04-19
-- Decision: keep infrastructure ownership of persistence/vector/embedding implementation.
-- Rationale: adapter-based exchangeability.
-- Consequence: implementations may change without touching domain/application behavior.
-
-### ADR-4: MCP boundary contract first
-- Date: 2026-04-19
-- Decision: MCP tools/resources expose application intent via `CyclePort`/`IngestionPort`.
-- Rationale: transport remains stable and testable.
-- Consequence: direct dependency on concrete internals is not a long-term state and must be migrated under P6.
+- Entrypoint:
+  - `python -m gwt_context`
+  - `gwt-context` script from `pyproject.toml`.
+- Composition root:
+  - `server.create_server()` and `server.main()` are the only process bootstrap points.
+- Verified baseline test surface:
+  - `pytest` against `tests/unit` and `tests/integration`.
