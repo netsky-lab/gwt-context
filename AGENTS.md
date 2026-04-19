@@ -1,20 +1,60 @@
 # AGENTS.md
 
-## Repository Conventions
+## Scope
 
-- Language: Python 3.11+, type hints required (`[tool.mypy]` uses strict mode).
-- Entrypoint: `src/gwt_context/__main__.py` calls `gwt_context.server:main`.
-- Composition root: `src/gwt_context/server.py` only; business logic belongs in `application/` or `domain/`.
-- MCP entry layer (`src/gwt_context/mcp/`) must delegate to application services and avoid reading private state directly.
-- Task order for architectural work:
-  1. Stabilize contract/documentation
-  2. P5: move application dependencies behind `interfaces/` ports
-  3. P6: remove MCP dependence on concrete domain/infrastructure internals
-  4. P7/P8 benchmark and run workflows
+- Applies to all project areas: `src/`, `tests/`, benchmark harness, documentation, and local tooling.
+- Default posture: minimal, task-scoped diffs only. Avoid unrelated refactors.
 
-## Quality Gates
+## Single Source of Truth
 
-- Run `pytest` for behavior.
-- Run `ruff check .` before merge.
-- Run `mypy .` before merge.
+Before implementing any task, **the task plan must read this checklist first**:
 
+1. Read `ARCHITECTURE.md`.
+2. Record in the task plan:
+   - module inbounds/outbounds and expected owners,
+   - forbidden imports for that task,
+   - forbidden coupling points being preserved or removed,
+   - test impact and rollback condition.
+3. Start the task only after these checks are captured.
+
+## Environment and Tooling (Verified)
+
+- Runtime: Python `>=3.11` (`pyproject.toml`).
+- Stack: Python + MCP + pytest + ruff + mypy (strict mode) from `pyproject.toml`.
+- Setup:
+  - `pip install -e .`
+  - `pip install -e "[dev]"` (pytest/ruff/mypy)
+  - `pip install -e "[bench]"` (benchmarks)
+- Entrypoints:
+  - `python -m gwt_context`
+  - script: `gwt-context`
+
+## Coding Conventions
+
+- Keep layer boundaries as documented in `ARCHITECTURE.md` (domain/application/infrastructure/mcp/server).
+- MCP layer must not reach into private/internal concrete domain/infrastructure state.
+- Use explicit type hints on public functions/methods and keep docstrings for public/tool-facing APIs.
+
+## File-Touch Etiquette
+
+- Prefer existing extension points; do not rewrite existing flow for style reasons.
+- For documentation tasks, keep command snippets and behavior statements aligned to current files.
+- Keep changes small and scoped to the assigned task.
+
+## Testing Expectations
+
+- Required verification command: `pytest`.
+- For non-doc edits, also run `ruff check .` and `mypy src`.
+- Never move on without recording whether baseline tests changed.
+
+## Documentation and Changelog Policy
+
+- Any task that changes conventions, dependencies, onboarding flow, or architecture boundaries must:
+  - update `ROADMAP.md` if priority/task ordering is affected,
+  - append `CHANGELOG.md` with a dated entry before commit.
+- When changing this file, keep entries concrete and testable.
+
+## Collaboration Constraints
+
+- Read `README.md`, `ARCHITECTURE.md`, and `pyproject.toml` before edits when relevant.
+- Do not touch unrelated files unless required for verifiability.
