@@ -9,6 +9,7 @@ from tests.benchmarks import harness
 from tests.benchmarks.config import BenchmarkConfig
 from tests.benchmarks.harness import (
     BenchmarkTask,
+    GWTSession,
     TaskResult,
     _build_openai_client,
     run_benchmark,
@@ -110,6 +111,9 @@ def test_run_benchmark_writes_deterministic_results(monkeypatch, tmp_path: Path)
     assert saved["task_count"] == 1
     assert len(saved["results"]) == 2
     assert saved["gwt_accuracy"] == 1.0
+    assert "raw_answer" in saved["results"][0]
+    assert "workspace_snapshot" in saved["results"][0]
+    assert "trace" in saved["results"][0]
 
 
 def test_run_benchmark_reuses_and_overrides_config(monkeypatch, tmp_path: Path) -> None:
@@ -318,3 +322,18 @@ def test_run_benchmark_rejects_misconfigured_api_path() -> None:
             api_key="k",
             api_path="https://example.com/abs",
         )
+
+
+def test_gwt_session_returns_structured_tool_errors(monkeypatch) -> None:
+    class FakeEmbedder:
+        def embed(self, _text: str) -> list[float]:
+            return [1.0, 0.0, 0.0, 0.0]
+
+    session = GWTSession(embedder=FakeEmbedder())  # type: ignore[arg-type]
+    try:
+        result, trace = session.execute_tool_with_trace("gwt_set_goal", {})
+    finally:
+        session.close()
+
+    assert "missing required argument" in result
+    assert trace["error"] == "missing required argument: description"

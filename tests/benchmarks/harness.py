@@ -156,7 +156,10 @@ class TaskResult:
     tool_calls: int
     total_tokens: int
     latency_seconds: float
+    raw_answer: str = ""
     workspace_at_answer: str = ""
+    workspace_snapshot: dict[str, Any] = field(default_factory=dict)
+    trace: list[dict[str, Any]] = field(default_factory=list)
     error: str = ""
 
 
@@ -245,6 +248,10 @@ class BenchmarkReport:
                     "tool_calls": r.tool_calls,
                     "total_tokens": r.total_tokens,
                     "latency_seconds": r.latency_seconds,
+                    "raw_answer": r.raw_answer,
+                    "workspace_at_answer": r.workspace_at_answer,
+                    "workspace_snapshot": r.workspace_snapshot,
+                    "trace": r.trace,
                     "error": r.error,
                 }
                 for r in self.results
@@ -259,7 +266,11 @@ class BenchmarkReport:
 class GWTSession:
     """A fresh GWT system for one benchmark task."""
 
-    def __init__(self, config: GWTConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: GWTConfig | None = None,
+        embedder: SentenceTransformerEmbedder | None = None,
+    ) -> None:
         self._tmp = tempfile.mkdtemp()
         if config is None:
             config = GWTConfig(data_dir=self._tmp)
@@ -267,9 +278,9 @@ class GWTSession:
             config.data_dir = self._tmp
         config.ensure_data_dir()
 
-        self._embedder = SentenceTransformerEmbedder(model_name=config.embedding_model)
+        self._embedder = embedder or SentenceTransformerEmbedder(model_name=config.embedding_model)
         self._store = SQLiteMemoryStore(db_path=config.db_path)
-        self._vi = VectorIndex(dim=config.embedding_dim, path=config.vector_index_path)
+        self._vi = VectorIndex(dim=config.embedding_dim, path=None)
 
         workspace = GlobalWorkspace(capacity=config.workspace_capacity)
         specialists = create_default_specialists()
@@ -298,7 +309,22 @@ class GWTSession:
 
     def execute_tool(self, name: str, args: dict[str, Any]) -> str:
         """Execute a GWT tool call, return result as string."""
+        result, _trace = self.execute_tool_with_trace(name, args)
+        return result
+
+    def execute_tool_with_trace(
+        self,
+        name: str,
+        args: dict[str, Any],
+    ) -> tuple[str, dict[str, Any]]:
+        """Execute a GWT tool call and return a JSON-serializable trace payload."""
+        trace: dict[str, Any] = {
+            "tool": name,
+            "arguments": args,
+        }
         if name == "gwt_store":
+            if "content" not in args:
+                return _tool_error(name, "missing required argument: content", trace)
             mt = MemoryType(args.get("memory_type", "semantic"))
             item = self._ingestion.ingest(
                 content=args["content"],
@@ -306,41 +332,79 @@ class GWTSession:
                 source="benchmark",
                 link_to=args.get("link_to"),
             )
-            self._cycle.buffer.push(item)
-            return json.dumps({"id": item.id, "status": "stored"})
+            self._cycle.enqueue_for_competition(item)
+            payload = {"id": item.id, "status": "stored"}
+            trace["result"] = payload
+            trace["buffer_after"] = self._cycle.inspect("buffer")
+            return json.dumps(payload), trace
 
         if name == "gwt_set_goal":
-            goal = self._cycle.goal_manager.set_goal(
+            if "description" not in args:
+                return _tool_error(name, "missing required argument: description", trace)
+            goal = self._cycle.set_goal(
                 description=args["description"],
                 keywords=args.get("keywords"),
             )
-            return json.dumps({"goal_id": goal.id, "status": "goal set"})
+            payload = {"goal_id": goal.id, "status": "goal set"}
+            trace["result"] = payload
+            trace["goals_after"] = self._cycle.inspect("goals")
+            return json.dumps(payload), trace
 
         if name == "gwt_broadcast":
+            dry_run = self._cycle.run_competition_dry()
+            trace["competition"] = _competition_trace(dry_run)
             record = self._cycle.run()
-            return record.formatted_content
+            trace["result"] = {
+                "id": record.id,
+                "admitted": record.admitted_ids,
+                "evicted": record.evicted_ids,
+            }
+            trace["workspace_after"] = self._cycle.inspect("workspace")
+            return record.formatted_content, trace
 
         if name == "gwt_query":
+            if "query" not in args:
+                return _tool_error(name, "missing required argument: query", trace)
             items = self._ingestion.query_similar(
                 query=args["query"],
                 k=args.get("k", 5),
             )
-            return json.dumps(
-                [
-                    {"id": i.id, "content": i.content, "activation": round(i.activation_level, 3)}
-                    for i in items
-                ]
-            )
+            payload = [
+                {"id": i.id, "content": i.content, "activation": round(i.activation_level, 3)}
+                for i in items
+            ]
+            trace["result"] = payload
+            return json.dumps(payload), trace
 
         if name == "gwt_link":
-            self._store.add_link(args["source_id"], args["target_id"])
-            return json.dumps({"status": "linked"})
+            if "source_id" not in args or "target_id" not in args:
+                return _tool_error(
+                    name,
+                    "missing required arguments: source_id and target_id",
+                    trace,
+                )
+            payload = self._cycle.link_items(args["source_id"], args["target_id"])
+            trace["result"] = payload
+            trace["workspace_after"] = self._cycle.inspect("workspace")
+            trace["buffer_after"] = self._cycle.inspect("buffer")
+            return json.dumps(payload), trace
 
-        return json.dumps({"error": f"unknown tool: {name}"})
+        payload = {"error": f"unknown tool: {name}"}
+        trace["result"] = payload
+        return json.dumps(payload), trace
 
     @property
     def workspace_text(self) -> str:
-        return self._cycle.workspace.get_broadcast_text()
+        return self._cycle.get_workspace_broadcast()
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return a read-model snapshot of the current benchmark GWT session."""
+        return {
+            "workspace": self._cycle.inspect("workspace"),
+            "buffer": self._cycle.inspect("buffer"),
+            "goals": self._cycle.inspect("goals"),
+            "stats": self._cycle.inspect("stats"),
+        }
 
     def close(self) -> None:
         self._store.close()
@@ -353,16 +417,16 @@ class GWTSession:
 
 GWT_SYSTEM_PROMPT = """You have access to a Global Workspace Theory (GWT) memory system.
 
-WORKFLOW:
-1. Call gwt_set_goal with the question you need to answer
-2. Call gwt_broadcast to get the most relevant context from memory
-3. If needed, call gwt_query to search for specific information
-4. Use gwt_store to save intermediate reasoning results (memory_type="working")
-5. Use gwt_link to connect related facts for multi-hop reasoning
-6. Call gwt_broadcast again to refresh context with linked items
-7. Give your final answer
+Use the tools as an active working-memory loop, not as optional search.
 
-IMPORTANT: After reasoning, provide your final answer in the format:
+Required workflow:
+1. First call gwt_set_goal with the exact question and useful keywords.
+2. Call gwt_query for the key entity/attribute in the question.
+3. Call gwt_broadcast to admit the most relevant facts into the workspace.
+4. If the answer needs multiple hops, call gwt_query or gwt_link, then gwt_broadcast again.
+5. Answer only from the question and broadcast/query evidence.
+
+IMPORTANT: Finish with exactly this format:
 ANSWER: <your answer>
 """
 
@@ -376,14 +440,17 @@ def run_task_gwt(
     embedder: SentenceTransformerEmbedder,
 ) -> TaskResult:
     """Run a single task with GWT tools."""
-    session = GWTSession()
+    session = GWTSession(embedder=embedder)
     start = time.time()
     tool_call_count = 0
     total_tokens = 0
+    trace: list[dict[str, Any]] = []
 
     try:
         for chunk in task.context_chunks:
-            session.execute_tool("gwt_store", {"content": chunk})
+            _result, tool_trace = session.execute_tool_with_trace("gwt_store", {"content": chunk})
+            tool_trace["phase"] = "preload"
+            trace.append(tool_trace)
 
         messages = [
             {"role": "system", "content": GWT_SYSTEM_PROMPT},
@@ -400,13 +467,31 @@ def run_task_gwt(
 
             choice = response.choices[0]
             total_tokens += (response.usage.total_tokens if response.usage else 0)
+            trace.append(
+                {
+                    "phase": "model",
+                    "round": len([entry for entry in trace if entry.get("phase") == "model"]) + 1,
+                    "finish_reason": choice.finish_reason,
+                    "content": choice.message.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        }
+                        for tc in (choice.message.tool_calls or [])
+                    ],
+                }
+            )
 
             if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
                 messages.append(choice.message)
                 for tc in choice.message.tool_calls:
                     tool_call_count += 1
                     args = json.loads(tc.function.arguments)
-                    result = session.execute_tool(tc.function.name, args)
+                    result, tool_trace = session.execute_tool_with_trace(tc.function.name, args)
+                    tool_trace["phase"] = "tool"
+                    tool_trace["round"] = tool_call_count
                     messages.append(
                         {
                             "role": "tool",
@@ -414,6 +499,7 @@ def run_task_gwt(
                             "content": result,
                         }
                     )
+                    trace.append(tool_trace)
             else:
                 answer_text = choice.message.content or ""
                 predicted = _extract_answer(answer_text)
@@ -428,7 +514,10 @@ def run_task_gwt(
                     tool_calls=tool_call_count,
                     total_tokens=total_tokens,
                     latency_seconds=time.time() - start,
+                    raw_answer=answer_text,
                     workspace_at_answer=session.workspace_text,
+                    workspace_snapshot=session.snapshot(),
+                    trace=trace,
                 )
 
         return TaskResult(
@@ -440,6 +529,9 @@ def run_task_gwt(
             tool_calls=tool_call_count,
             total_tokens=total_tokens,
             latency_seconds=time.time() - start,
+            workspace_at_answer=session.workspace_text,
+            workspace_snapshot=session.snapshot(),
+            trace=trace,
             error="max_tool_rounds",
         )
     except Exception as e:
@@ -452,6 +544,9 @@ def run_task_gwt(
             tool_calls=tool_call_count,
             total_tokens=total_tokens,
             latency_seconds=time.time() - start,
+            workspace_at_answer=session.workspace_text,
+            workspace_snapshot=session.snapshot(),
+            trace=trace,
             error=str(e),
         )
     finally:
@@ -496,6 +591,14 @@ def run_task_baseline(
             tool_calls=0,
             total_tokens=total_tokens,
             latency_seconds=time.time() - start,
+            raw_answer=answer_text,
+            trace=[
+                {
+                    "phase": "model",
+                    "content": answer_text,
+                    "finish_reason": response.choices[0].finish_reason,
+                }
+            ],
         )
     except Exception as e:
         return TaskResult(
@@ -709,6 +812,46 @@ def _print_task_result(result_gwt: TaskResult, result_bl: TaskResult) -> None:
     )
     baseline_status = "OK" if result_bl.correct else "WRONG"
     print(f"  Baseline: {baseline_status} ({result_bl.latency_seconds:.1f}s)")
+
+
+def _competition_trace(result: Any) -> dict[str, Any]:
+    return {
+        "winners": [
+            {
+                "id": item.id,
+                "score": round(result.scores.get(item.id, 0.0), 4),
+                "preview": item.content[:160],
+            }
+            for item in result.winners
+        ],
+        "evicted": [
+            {
+                "id": item.id,
+                "score": round(result.scores.get(item.id, 0.0), 4),
+                "preview": item.content[:160],
+            }
+            for item in result.evicted
+        ],
+        "scores": {
+            item_id: round(score, 4)
+            for item_id, score in sorted(
+                result.scores.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )
+        },
+    }
+
+
+def _tool_error(
+    tool_name: str,
+    message: str,
+    trace: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    payload = {"error": message, "tool": tool_name}
+    trace["result"] = payload
+    trace["error"] = message
+    return json.dumps(payload), trace
 
 
 def _check_answer(predicted: str, expected: str) -> bool:

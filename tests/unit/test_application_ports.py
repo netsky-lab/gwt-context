@@ -126,15 +126,16 @@ def test_cycle_is_constructed_from_port_dependencies() -> None:
     item = MemoryItem(id="seed", content="fruit fact")
     cycle.enqueue_for_competition(item)
     record = cycle.run_competition_dry(n_slots=1)
-    _ = cycle.inspect("stats")
+    stats = cycle.inspect("stats")
+    buffer_snapshot = cycle.inspect("buffer")
 
-    assert len(cycle.buffer.top(k=1)) == 1
+    assert buffer_snapshot["size"] == 1
     competition.run_competition.assert_called_once()
     assert record is competition_result
     store.update_state.assert_called_once_with(item.id, ActivationState.PRECONSCIOUS)
-    assert cycle.buffer.all_items()[0] is item
+    assert buffer_snapshot["items"][0]["id"] == item.id
     index.query.assert_called_once()
-    assert "broadcasts" in _
+    assert "broadcasts" in stats
 
 
 def test_server_builds_cycle_with_infrastructure_ports(monkeypatch, tmp_path) -> None:
@@ -177,9 +178,8 @@ def test_server_builds_cycle_with_infrastructure_ports(monkeypatch, tmp_path) ->
             "competition": competition,
         }
         cycle = Mock()
-        cycle.workspace = workspace
-        cycle.buffer = buffer
-        cycle.goal_manager = goal_manager
+        cycle.inspect = Mock(return_value={})
+        cycle.get_workspace_broadcast = Mock(return_value="")
         return cycle
 
     config = GWTConfig(data_dir=tmp_path / "wire")

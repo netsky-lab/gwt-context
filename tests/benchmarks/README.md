@@ -72,3 +72,10 @@ Each result file is written atomically and contains both:
 
 - task and scoring fields (`gwt_results`, `baseline_results`, accuracy summaries)
 - metadata (`run_id`, `run_timestamp`, `api_base`, `config_hash`, `task_count`)
+- trace fields (`raw_answer`, `workspace_snapshot`, `workspace_at_answer`, tool/model trace)
+
+Summarize one or more result files with:
+
+```bash
+python -m tests.benchmarks.analyze_results tests/benchmarks/results
+```

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-04-27
+
+- Added benchmark trace artifacts, result analysis helpers, and research-backed design rationale for GWT architecture decisions.
+- Added a Qwen benchmark matrix report and hardened benchmark tool execution so malformed model tool arguments are recorded as trace errors instead of aborting tasks.
+- Made sentence-transformer lazy initialization thread-safe for concurrent benchmark runs.
+
 ## 2026-04-26
 
 - Added a `research/` cache with current 2025-2026 GWT/GNWT papers, source metadata, and design implications for the project.

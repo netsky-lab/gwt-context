@@ -165,15 +165,3 @@ class CyclePort(Protocol):
 
     def inspect(self, target: str = "workspace") -> dict[str, Any]:
         ...
-
-    @property
-    def workspace(self) -> Any:
-        ...
-
-    @property
-    def buffer(self) -> Any:
-        ...
-
-    @property
-    def goal_manager(self) -> Any:
-        ...

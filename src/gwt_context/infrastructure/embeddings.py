@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from threading import Lock
 from typing import Any, Protocol
 
 
@@ -32,9 +33,14 @@ class SentenceTransformerEmbedder:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
         self._model_name = model_name
         self._model: EmbeddingBackendProtocol | None = None
+        self._model_lock = Lock()
 
     def _ensure_model(self) -> None:
-        if self._model is None:
+        if self._model is not None:
+            return
+        with self._model_lock:
+            if self._model is not None:
+                return
             from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(self._model_name)
 

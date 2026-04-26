@@ -23,3 +23,34 @@ def test_sentence_transformer_embedder_returns_python_lists() -> None:
         [1.0, 2.0, 3.0],
         [4.0, 5.0, 6.0],
     ]
+
+
+def test_sentence_transformer_embedder_lazy_load_is_thread_safe(monkeypatch) -> None:
+    loads = 0
+
+    class Backend:
+        def encode(self, _text: object) -> object:
+            return [1, 2, 3]
+
+    class FakeSentenceTransformer:
+        def __init__(self, _model_name: str) -> None:
+            nonlocal loads
+            loads += 1
+
+        def encode(self, _text: object) -> object:
+            return Backend().encode(_text)
+
+    def fake_import(_name: str, *_args: object, **_kwargs: object) -> object:
+        if _name == "sentence_transformers":
+            class Module:
+                SentenceTransformer = FakeSentenceTransformer
+
+            return Module()
+        raise AssertionError(_name)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    embedder = SentenceTransformerEmbedder()
+
+    assert embedder.embed("a") == [1.0, 2.0, 3.0]
+    assert embedder.embed("b") == [1.0, 2.0, 3.0]
+    assert loads == 1
