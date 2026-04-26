@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-04-26
+
+- Removed direct MCP resource coupling to cycle workspace/buffer/goal internals by routing workspace, goals, and stats resources through `CyclePort` read-model APIs.
+- Added a current-workspace broadcast read method to the cycle port and implementation for resource use without running a broadcast cycle.
+- Updated baseline documentation to avoid stale test-count drift and record the current `pytest` baseline.
+
 ## 2026-04-19
 
 - Synced benchmark CLI defaults with config precedence for `BENCHMARK_RESULTS_DIR` in

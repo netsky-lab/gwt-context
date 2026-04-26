@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 78 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 96 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -43,7 +43,7 @@
 - **Acceptance:**
   - MCP handlers consume only port-defined interfaces or declared application services.
   - New/updated delegation tests cover `gwt_query`, `gwt_compete`, `gwt_link`, and resource read paths.
-  - `pytest` remains `74 passed` baseline equivalence (allowing additional tests if added).
+  - `pytest` remains green with no regression in MCP payload behavior.
 
 ## Medium-term
 

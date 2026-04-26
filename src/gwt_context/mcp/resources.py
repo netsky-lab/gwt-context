@@ -18,37 +18,37 @@ def register_resources(
     @mcp.resource("gwt://workspace")
     def workspace_resource() -> str:
         """Current workspace broadcast text."""
-        return str(cycle.workspace.get_broadcast_text())
+        return cycle.get_workspace_broadcast()
 
     @mcp.resource("gwt://workspace/slots")
     def workspace_slots() -> str:
         """Detailed slot-by-slot view of the workspace."""
         lines = []
-        for slot in cycle.workspace.slots:
-            if slot.item is not None:
-                item = slot.item
+        snapshot = cycle.inspect("workspace")
+        for item in snapshot.get("items", []):
+            if not item.get("empty"):
                 lines.append(
-                    f"Slot {slot.index}: [{item.id}] "
-                    f"({item.memory_type.value}, a={item.activation_level:.2f}) "
-                    f"{item.content[:200]}"
+                    f"Slot {item['index']}: [{item['id']}] "
+                    f"({item['memory_type']}, a={item['activation_level']:.2f}) "
+                    f"{item['content'][:200]}"
                 )
-                if item.linked_ids:
-                    lines.append(f"  Links: {', '.join(item.linked_ids)}")
+                if item.get("linked_ids"):
+                    lines.append(f"  Links: {', '.join(item['linked_ids'])}")
             else:
-                lines.append(f"Slot {slot.index}: [empty]")
+                lines.append(f"Slot {item['index']}: [empty]")
         return "\n".join(lines)
 
     @mcp.resource("gwt://goals")
     def goals_resource() -> str:
         """Current active goals."""
-        goals = cycle.goal_manager.active_goals
+        goals = cycle.inspect("goals").get("items", [])
         if not goals:
             return "No active goals. Use gwt_set_goal to set one."
         lines = []
-        for g in goals:
-            lines.append(f"[{g.id}] (p={g.priority}) {g.description}")
-            if g.keywords:
-                lines.append(f"  Keywords: {', '.join(g.keywords)}")
+        for goal in goals:
+            lines.append(f"[{goal['id']}] (p={goal['priority']}) {goal['description']}")
+            if goal.get("keywords"):
+                lines.append(f"Keywords: {', '.join(goal['keywords'])}")
         return "\n".join(lines)
 
     @mcp.resource("gwt://memory/{item_id}")
@@ -74,11 +74,13 @@ def register_resources(
     @mcp.resource("gwt://stats")
     def stats_resource() -> str:
         """System statistics."""
+        workspace = cycle.inspect("workspace")
+        stats = cycle.inspect("stats")
         lines = [
-            f"Total items: {store.count_items()}",
-            f"Workspace: {cycle.workspace.occupied_count}/{cycle.workspace.capacity}",
-            f"Buffer: {cycle.buffer.size}",
-            f"Broadcasts: {store.get_broadcast_count()}",
-            f"Active goals: {len(cycle.goal_manager.active_goals)}",
+            f"Total items: {stats['total_items']}",
+            f"Workspace: {workspace['occupied_count']}/{workspace['capacity']}",
+            f"Buffer: {stats['buffer_size']}",
+            f"Broadcasts: {stats['broadcasts']}",
+            f"Active goals: {stats['active_goals']}",
         ]
         return "\n".join(lines)

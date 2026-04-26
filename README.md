@@ -135,8 +135,7 @@ src/gwt_context/
 pip install -e ".[dev]"
 pytest tests/unit/ tests/integration/ -q
 ```
-
-67 tests covering domain logic, storage, vector index, and full selection-broadcast cycles.
+Tests cover domain logic, storage, vector index, MCP boundaries, and full selection-broadcast cycles.
 
 ## Benchmarks
 

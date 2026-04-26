@@ -140,6 +140,9 @@ class CyclePort(Protocol):
     def run(self) -> BroadcastRecord:
         ...
 
+    def get_workspace_broadcast(self) -> str:
+        ...
+
     def run_competition_dry(self, n_slots: int | None = None) -> Any:
         ...
 

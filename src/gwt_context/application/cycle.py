@@ -129,6 +129,10 @@ class SelectionBroadcastCycle:
             n_winners=n_slots,
         )
 
+    def get_workspace_broadcast(self) -> str:
+        """Return the current workspace broadcast text without running a cycle."""
+        return self._ws.get_broadcast_text()
+
     def enqueue_for_competition(self, item: MemoryItem) -> None:
         """Add an item to the preconscious buffer for the next cycle."""
         self._buffer.push(item)
@@ -186,6 +190,7 @@ class SelectionBroadcastCycle:
                         "content": slot.item.content if slot.item else "",
                         "memory_type": slot.item.memory_type.value if slot.item else "",
                         "activation_level": slot.item.activation_level if slot.item else 0.0,
+                        "linked_ids": slot.item.linked_ids if slot.item else [],
                         "empty": slot.is_empty,
                     }
                     for slot in self._ws.slots
