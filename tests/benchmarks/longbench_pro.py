@@ -290,7 +290,7 @@ def main():
         "--concurrency",
         type=int,
         default=int(env_or_default("BENCHMARK_CONCURRENCY", "1")),
-        help="Benchmark task execution concurrency (currently reserved; default: 1)",
+        help="Benchmark task execution concurrency (default: BENCHMARK_CONCURRENCY)",
     )
     args = parser.parse_args()
 

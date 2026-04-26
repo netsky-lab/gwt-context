@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 
 class EmbeddingBackendProtocol(Protocol):
@@ -47,11 +47,23 @@ class SentenceTransformerEmbedder:
         model = self._model
         assert model is not None
         embedding = model.encode(text)
-        return cast(list[float], embedding)
+        return _as_float_list(embedding)
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         self._ensure_model()
         model = self._model
         assert model is not None
         embeddings = model.encode(texts)
-        return cast(list[list[float]], embeddings)
+        return _as_float_matrix(embeddings)
+
+
+def _as_float_list(values: Any) -> list[float]:
+    if hasattr(values, "tolist"):
+        values = values.tolist()
+    return [float(value) for value in values]
+
+
+def _as_float_matrix(values: Any) -> list[list[float]]:
+    if hasattr(values, "tolist"):
+        values = values.tolist()
+    return [_as_float_list(row) for row in values]

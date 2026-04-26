@@ -224,6 +224,90 @@ def test_run_benchmark_uses_cli_results_dir(monkeypatch, tmp_path: Path) -> None
     assert captured["results_dir"] == str(tmp_path)
 
 
+def test_run_benchmark_uses_configured_concurrency(monkeypatch, tmp_path: Path) -> None:
+    tasks = [
+        BenchmarkTask(
+            id=f"t{i}",
+            question="Q",
+            context_chunks=["ctx"],
+            expected_answer="ans",
+        )
+        for i in range(3)
+    ]
+    captured: dict[str, object] = {}
+
+    class RecordingExecutor:
+        def __init__(self, max_workers: int) -> None:
+            captured["max_workers"] = max_workers
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def submit(self, fn, *args):  # type: ignore[no-untyped-def]
+            class ImmediateFuture:
+                def result(self):
+                    return fn(*args)
+
+            return ImmediateFuture()
+
+    monkeypatch.setattr(harness, "ThreadPoolExecutor", RecordingExecutor)
+    monkeypatch.setattr(harness, "as_completed", lambda futures: list(futures))
+    monkeypatch.setattr(harness, "_build_openai_client", lambda _config: object())
+    monkeypatch.setattr(
+        harness,
+        "SentenceTransformerEmbedder",
+        lambda *args, **kwargs: object(),
+    )
+
+    def fake_gwt(
+        _client: object,
+        _model: str,
+        task: BenchmarkTask,
+        _embedder: object,
+    ) -> TaskResult:
+        return TaskResult(
+            task_id=task.id,
+            mode="gwt",
+            predicted_answer="ans",
+            expected_answer="ans",
+            correct=True,
+            tool_calls=0,
+            total_tokens=1,
+            latency_seconds=0.0,
+        )
+
+    def fake_baseline(_client: object, _model: str, task: BenchmarkTask) -> TaskResult:
+        return TaskResult(
+            task_id=task.id,
+            mode="baseline",
+            predicted_answer="ans",
+            expected_answer="ans",
+            correct=True,
+            tool_calls=0,
+            total_tokens=1,
+            latency_seconds=0.0,
+        )
+
+    monkeypatch.setattr(harness, "run_task_gwt", fake_gwt)
+    monkeypatch.setattr(harness, "run_task_baseline", fake_baseline)
+
+    report = run_benchmark(
+        benchmark_name="ruler_multi_hop",
+        tasks=tasks,
+        api_base="https://api.example.com",
+        model="model-x",
+        api_key="k",
+        results_dir=tmp_path,
+        concurrency=16,
+    )
+
+    assert captured["max_workers"] == 16
+    assert [result.task_id for result in report.results] == ["t0", "t0", "t1", "t1", "t2", "t2"]
+
+
 def test_run_benchmark_rejects_misconfigured_api_path() -> None:
     with pytest.raises(ValueError, match="relative"):
         run_benchmark(

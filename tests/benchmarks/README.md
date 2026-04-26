@@ -26,7 +26,7 @@ cp .env.example .env
 - `BENCHMARK_TIMEOUT_SECONDS` (default `30`) - request timeout seconds
 - `BENCHMARK_API_HEADERS` - JSON or CSV `key=value` headers
 - `BENCHMARK_MAX_RETRIES` (default `2`)
-- `BENCHMARK_CONCURRENCY` (default `1`)
+- `BENCHMARK_CONCURRENCY` (default `1`) - number of independent benchmark tasks to run in parallel
 - `BENCHMARK_RESULTS_DIR` (default `tests/benchmarks/results`)
 
 ## Run commands
@@ -49,6 +49,18 @@ python -m tests.benchmarks.longbench_pro \
 ```
 
 `--api-path` and `--api-base` are combined deterministically; no hidden path mutation is done in tests.
+If your RunPod URL already ends with `/v1`, keep `BENCHMARK_API_PATH=/v1`; the loader will not duplicate the path.
+
+For a Qwen RunPod endpoint with 16 request slots, use:
+
+```dotenv
+BENCHMARK_API_BASE=https://example-openai-compatible-endpoint/v1
+BENCHMARK_MODEL=qwen3.6-35b-a3b
+BENCHMARK_API_KEY=test
+BENCHMARK_API_PATH=/v1
+BENCHMARK_CONCURRENCY=16
+BENCHMARK_TIMEOUT_SECONDS=60
+```
 
 ## Output behavior
 

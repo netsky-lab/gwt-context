@@ -166,13 +166,13 @@ Results are saved as JSON in `BENCHMARK_RESULTS_DIR` (default `tests/benchmarks/
 The benchmark entrypoints load `.env` automatically if it exists. The repository now includes `.env.example` with the current RunPod-compatible defaults:
 
 ```dotenv
-BENCHMARK_API_BASE=https://example-openai-compatible-endpoint
+BENCHMARK_API_BASE=https://example-openai-compatible-endpoint/v1
 BENCHMARK_API_PATH=/v1
-BENCHMARK_MODEL=gemma-4-26b-a4b-public-safe
-BENCHMARK_API_KEY=none
+BENCHMARK_MODEL=qwen3.6-35b-a3b
+BENCHMARK_API_KEY=test
 BENCHMARK_TIMEOUT_SECONDS=30
 BENCHMARK_MAX_RETRIES=2
-BENCHMARK_CONCURRENCY=1
+BENCHMARK_CONCURRENCY=16
 BENCHMARK_RESULTS_DIR=tests/benchmarks/results
 ```
 

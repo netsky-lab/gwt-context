@@ -10,6 +10,7 @@ import hashlib
 import json
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -639,21 +640,38 @@ def run_benchmark(
         task_count=len(tasks),
     )
 
-    for i, task in enumerate(tasks):
-        print(f"[{i+1}/{len(tasks)}] Task {task.id}...")
-
+    def run_task_pair(index: int, task: BenchmarkTask) -> tuple[int, TaskResult, TaskResult]:
         result_gwt = run_task_gwt(client, config.model, task, embedder)
-        report.results.append(result_gwt)
-        status = "OK" if result_gwt.correct else "WRONG"
-        print(
-            "  GWT:      "
-            f"{status} ({result_gwt.tool_calls} calls, {result_gwt.latency_seconds:.1f}s)"
-        )
-
         result_bl = run_task_baseline(client, config.model, task)
+        return index, result_gwt, result_bl
+
+    task_results: list[tuple[TaskResult, TaskResult] | None] = [None] * len(tasks)
+    if config.concurrency == 1:
+        for i, task in enumerate(tasks):
+            print(f"[{i+1}/{len(tasks)}] Task {task.id}...")
+            index, result_gwt, result_bl = run_task_pair(i, task)
+            task_results[index] = (result_gwt, result_bl)
+            _print_task_result(result_gwt, result_bl)
+    else:
+        print(f"Running with concurrency={config.concurrency}")
+        with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
+            futures = {
+                executor.submit(run_task_pair, i, task): (i, task)
+                for i, task in enumerate(tasks)
+            }
+            for future in as_completed(futures):
+                i, task = futures[future]
+                index, result_gwt, result_bl = future.result()
+                task_results[index] = (result_gwt, result_bl)
+                print(f"[{i+1}/{len(tasks)}] Task {task.id} complete")
+                _print_task_result(result_gwt, result_bl)
+
+    for result_pair in task_results:
+        if result_pair is None:
+            continue
+        result_gwt, result_bl = result_pair
+        report.results.append(result_gwt)
         report.results.append(result_bl)
-        status = "OK" if result_bl.correct else "WRONG"
-        print(f"  Baseline: {status} ({result_bl.latency_seconds:.1f}s)")
 
     print()
     print(report.summary())
@@ -681,6 +699,16 @@ def _extract_answer(text: str) -> str:
         return text.split("ANSWER:")[-1].strip()
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     return lines[-1] if lines else text
+
+
+def _print_task_result(result_gwt: TaskResult, result_bl: TaskResult) -> None:
+    gwt_status = "OK" if result_gwt.correct else "WRONG"
+    print(
+        "  GWT:      "
+        f"{gwt_status} ({result_gwt.tool_calls} calls, {result_gwt.latency_seconds:.1f}s)"
+    )
+    baseline_status = "OK" if result_bl.correct else "WRONG"
+    print(f"  Baseline: {baseline_status} ({result_bl.latency_seconds:.1f}s)")
 
 
 def _check_answer(predicted: str, expected: str) -> bool:
