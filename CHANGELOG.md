@@ -2,6 +2,10 @@
 
 ## 2026-04-27
 
+- Added reusable `AttentionController` in the application layer for goal-directed evidence planning, query admission, and broadcast through ports.
+- Moved benchmark-specific controlled evidence logic into a resolver registry, including top-k employee aggregation support.
+- Extended benchmark analysis with failure buckets, token/latency ratios, workspace occupancy metrics, and an updated four-mode Qwen report.
+- Added a local MCP demo scenario using deterministic embeddings and committed npm lockfile metadata for reproducible `npm test` setup.
 - Added hybrid GWT benchmark mode that uses deterministic GWT routing with model-only final synthesis.
 - Added benchmark trace HTML rendering and a four-mode Qwen matrix report covering prompt-only baseline, model-controlled tools, deterministic controlled routing, and hybrid routing.
 - Added MCP smoke coverage over registered tools/resources using public MCP handlers and real application wiring.

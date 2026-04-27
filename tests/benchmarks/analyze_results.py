@@ -35,6 +35,7 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     gwt_results = []
     baseline_results = []
     examples = []
+    failure_buckets: dict[str, int] = defaultdict(int)
 
     for task_id, pair in pairs.items():
         gwt = pair.get("gwt")
@@ -53,6 +54,10 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
         else:
             buckets["both_wrong"] += 1
 
+        failure_kind = classify_gwt_failure(gwt)
+        if failure_kind != "correct":
+            failure_buckets[failure_kind] += 1
+
         if len(examples) < 5 and (not gwt["correct"] or not baseline["correct"]):
             examples.append(
                 {
@@ -66,6 +71,12 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
                 }
             )
 
+    avg_gwt_tokens = _average([r.get("total_tokens", 0) for r in gwt_results])
+    avg_baseline_tokens = _average([r.get("total_tokens", 0) for r in baseline_results])
+    avg_gwt_latency = _average([r.get("latency_seconds", 0.0) for r in gwt_results])
+    avg_baseline_latency = _average(
+        [r.get("latency_seconds", 0.0) for r in baseline_results]
+    )
     return {
         "path": report.get("_path", ""),
         "benchmark_name": report.get("benchmark_name", ""),
@@ -74,16 +85,49 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
         "task_count": len(gwt_results),
         "gwt_accuracy": _accuracy(gwt_results),
         "baseline_accuracy": _accuracy(baseline_results),
-        "avg_gwt_latency": _average([r.get("latency_seconds", 0.0) for r in gwt_results]),
-        "avg_baseline_latency": _average(
-            [r.get("latency_seconds", 0.0) for r in baseline_results]
-        ),
+        "avg_gwt_latency": avg_gwt_latency,
+        "avg_baseline_latency": avg_baseline_latency,
         "avg_gwt_tool_calls": _average([r.get("tool_calls", 0) for r in gwt_results]),
-        "avg_gwt_tokens": _average([r.get("total_tokens", 0) for r in gwt_results]),
-        "avg_baseline_tokens": _average([r.get("total_tokens", 0) for r in baseline_results]),
+        "avg_gwt_tokens": avg_gwt_tokens,
+        "avg_baseline_tokens": avg_baseline_tokens,
+        "gwt_token_reduction_pct": _reduction_pct(avg_baseline_tokens, avg_gwt_tokens),
+        "gwt_latency_ratio": _ratio(avg_gwt_latency, avg_baseline_latency),
+        "avg_workspace_occupied": _average_workspace_occupied(gwt_results),
         "buckets": buckets,
+        "failure_buckets": dict(sorted(failure_buckets.items())),
         "examples": examples,
     }
+
+
+def classify_gwt_failure(result: dict[str, Any]) -> str:
+    """Classify why a GWT result failed, using trace and answer fields."""
+    if result.get("correct"):
+        return "correct"
+    if result.get("error") == "max_tool_rounds":
+        return "max_tool_rounds"
+    if result.get("error"):
+        return "runtime_error"
+
+    predicted = str(result.get("predicted", ""))
+    raw_answer = str(result.get("raw_answer", ""))
+    combined = f"{predicted}\n{raw_answer}"
+    if "<tool_call" in combined or "<channel|>" in combined:
+        return "tool_markup_as_answer"
+    if not predicted.strip():
+        return "empty_answer"
+    if int(result.get("tool_calls", 0)) == 0:
+        return "premature_no_tool_answer"
+
+    trace = result.get("trace", [])
+    if any(entry.get("error") for entry in trace if isinstance(entry, dict)):
+        return "tool_error"
+    if any(
+        entry.get("phase") == "model" and entry.get("finish_reason") == "tool_calls"
+        for entry in trace
+        if isinstance(entry, dict)
+    ):
+        return "wrong_after_tool_loop"
+    return "wrong_answer"
 
 
 def format_markdown(summaries: list[dict[str, Any]]) -> str:
@@ -103,12 +147,20 @@ def format_markdown(summaries: list[dict[str, Any]]) -> str:
                 f"- Avg GWT tool calls: {summary['avg_gwt_tool_calls']:.2f}",
                 f"- Avg GWT tokens: {summary['avg_gwt_tokens']:.1f}",
                 f"- Avg baseline tokens: {summary['avg_baseline_tokens']:.1f}",
+                f"- GWT token reduction vs baseline: {summary['gwt_token_reduction_pct']:+.1f}%",
+                f"- GWT/baseline latency ratio: {summary['gwt_latency_ratio']:.2f}x",
+                f"- Avg workspace occupied: {summary['avg_workspace_occupied']:.2f}",
                 "",
                 "Outcome buckets:",
             ]
         )
         for name, count in summary["buckets"].items():
             lines.append(f"- {name}: {count}")
+
+        if summary["failure_buckets"]:
+            lines.extend(["", "GWT failure buckets:"])
+            for name, count in summary["failure_buckets"].items():
+                lines.append(f"- {name}: {count}")
 
         if summary["examples"]:
             lines.extend(["", "Delta examples:"])
@@ -134,6 +186,26 @@ def _average(values: list[float | int]) -> float:
     if not values:
         return 0.0
     return float(sum(values)) / len(values)
+
+
+def _ratio(numerator: float, denominator: float) -> float:
+    if denominator == 0:
+        return 0.0
+    return numerator / denominator
+
+
+def _reduction_pct(baseline: float, measured: float) -> float:
+    if baseline == 0:
+        return 0.0
+    return (baseline - measured) / baseline * 100
+
+
+def _average_workspace_occupied(results: list[dict[str, Any]]) -> float:
+    counts = []
+    for result in results:
+        workspace = result.get("workspace_snapshot", {}).get("workspace", {})
+        counts.append(workspace.get("occupied_count", 0))
+    return _average(counts)
 
 
 def main() -> None:

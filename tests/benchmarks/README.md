@@ -59,6 +59,11 @@ Benchmark modes:
 - `--gwt-mode hybrid`: deterministic GWT routing builds the evidence pack, then
   the model performs final synthesis without a free tool loop.
 
+Controlled benchmark resolvers currently cover RULER advisor chains and
+LongBench Pro count/filter/aggregate/top-k employee tasks. They are adapters
+over `gwt_context.application.attention.AttentionController`, not product
+runtime dependencies.
+
 `--api-path` and `--api-base` are combined deterministically; no hidden path mutation is done in tests.
 If your RunPod URL already ends with `/v1`, keep `BENCHMARK_API_PATH=/v1`; the loader will not duplicate the path.
 
@@ -90,6 +95,10 @@ Summarize one or more result files with:
 ```bash
 python -m tests.benchmarks.analyze_results tests/benchmarks/results
 ```
+
+The analyzer reports accuracy, token/latency ratios, workspace occupancy, and
+GWT failure buckets such as `max_tool_rounds`, `tool_markup_as_answer`, and
+`wrong_after_tool_loop`.
 
 Render a trace-heavy JSON result as browsable HTML with:
 

@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 108 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 113 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -44,6 +44,15 @@
   - MCP handlers consume only port-defined interfaces or declared application services.
   - New/updated delegation tests cover `gwt_query`, `gwt_compete`, `gwt_link`, and resource read paths.
   - `pytest` remains green with no regression in MCP payload behavior.
+
+### 2026-04-30 — P8 attention-controller evaluation loop
+- **Owner:** application architecture + benchmark platform
+- **Inputs:** `src/gwt_context/application/attention.py`, `tests/benchmarks/*`, benchmark reports.
+- **Scope:** make successful controlled/hybrid selection reusable outside benchmark harness while keeping task-specific resolvers pluggable.
+- **Acceptance:**
+  - Attention controller depends only on application ports.
+  - Benchmark controlled/hybrid modes use resolver adapters instead of embedding controller flow in the harness.
+  - Analyzer reports failure buckets and token/latency/workspace metrics for future regressions.
 
 ## Medium-term
 

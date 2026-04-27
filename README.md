@@ -103,6 +103,10 @@ Items can be linked bidirectionally via `gwt_link`. The **GoalLinkageSpecialist*
 
 When the goal changes, GoalLinkageSpecialist re-weights all links by relevance to the new goal. Items linked to now-irrelevant content lose their boost and get evicted, making room for goal-relevant items.
 
+### Explicit attention control
+
+`gwt_context.application.attention.AttentionController` provides a reusable path for deterministic selection: set the goal, resolve an evidence plan, query/admit matching memories, then broadcast. Benchmarks use task-specific resolver adapters, but the controller itself depends only on application ports.
+
 ## Architecture
 
 ```
@@ -160,6 +164,26 @@ Each benchmark runs GWT mode (with tools) and baseline mode (all context in prom
 Results are saved as JSON in `BENCHMARK_RESULTS_DIR` (default `tests/benchmarks/results/`) using deterministic filenames:
 
 - `{benchmark}_{model}_{timestamp}_{config_hash}.json`
+
+Benchmark modes include prompt-only baseline, model-controlled `tools`, deterministic `controlled`, and `hybrid` mode where GWT selection is deterministic and the model only performs final synthesis.
+
+Analyze failures and runtime metrics with:
+
+```bash
+python -m tests.benchmarks.analyze_results tests/benchmarks/results
+```
+
+Render trace-heavy results as HTML with:
+
+```bash
+python -m tests.benchmarks.render_trace tests/benchmarks/results/<result>.json
+```
+
+Run a small local MCP-facing scenario without downloading embedding models:
+
+```bash
+python examples/mcp_demo.py
+```
 
 ### RunPod endpoint
 

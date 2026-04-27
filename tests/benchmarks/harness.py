@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,6 +18,13 @@ from typing import Any
 
 from openai import OpenAI
 
+from gwt_context.application.attention import (
+    AttentionController,
+    AttentionRun,
+    EvidencePlan,
+    evidence_plan_to_dict,
+    extract_question_keywords,
+)
 from gwt_context.application.cycle import PreconsciousBuffer, SelectionBroadcastCycle
 from gwt_context.application.goal_manager import GoalManager
 from gwt_context.application.ingestion import IngestionPipeline
@@ -34,6 +40,10 @@ from gwt_context.infrastructure.vector_index import VectorIndex
 from tests.benchmarks.config import (
     BenchmarkConfig,
     load_benchmark_config,
+)
+from tests.benchmarks.controlled_rules import (
+    build_benchmark_resolvers,
+    resolve_benchmark_evidence_dict,
 )
 
 # --- GWT Tool Definitions (OpenAI function calling format) ---
@@ -207,6 +217,32 @@ class BenchmarkReport:
             return 0.0
         return (self.gwt_accuracy - self.baseline_accuracy) / self.baseline_accuracy * 100
 
+    @property
+    def avg_gwt_tokens(self) -> float:
+        return _average_result_field(self.gwt_results, "total_tokens")
+
+    @property
+    def avg_baseline_tokens(self) -> float:
+        return _average_result_field(self.baseline_results, "total_tokens")
+
+    @property
+    def avg_gwt_latency(self) -> float:
+        return _average_result_field(self.gwt_results, "latency_seconds")
+
+    @property
+    def avg_baseline_latency(self) -> float:
+        return _average_result_field(self.baseline_results, "latency_seconds")
+
+    @property
+    def avg_workspace_occupied(self) -> float:
+        counts = [
+            result.workspace_snapshot.get("workspace", {}).get("occupied_count", 0)
+            for result in self.gwt_results
+        ]
+        if not counts:
+            return 0.0
+        return sum(float(count) for count in counts) / len(counts)
+
     def summary(self) -> str:
         lines = [
             f"=== {self.benchmark_name} | model={self.model} ===",
@@ -241,6 +277,11 @@ class BenchmarkReport:
             "gwt_accuracy": self.gwt_accuracy,
             "baseline_accuracy": self.baseline_accuracy,
             "improvement": self.improvement,
+            "avg_gwt_tokens": self.avg_gwt_tokens,
+            "avg_baseline_tokens": self.avg_baseline_tokens,
+            "avg_gwt_latency": self.avg_gwt_latency,
+            "avg_baseline_latency": self.avg_baseline_latency,
+            "avg_workspace_occupied": self.avg_workspace_occupied,
             "results": [
                 {
                     "task_id": r.task_id,
@@ -415,6 +456,16 @@ class GWTSession:
             "stats": self._cycle.inspect("stats"),
         }
 
+    @property
+    def cycle(self) -> SelectionBroadcastCycle:
+        """Application cycle used by benchmark controllers."""
+        return self._cycle
+
+    @property
+    def ingestion(self) -> IngestionPipeline:
+        """Application ingestion service used by benchmark controllers."""
+        return self._ingestion
+
     def close(self) -> None:
         self._store.close()
         import shutil
@@ -587,9 +638,11 @@ def run_task_gwt_controlled(
             tool_trace["phase"] = "preload"
             trace.append(tool_trace)
 
-        evidence, tool_call_count = _run_controlled_controller(session, task, trace)
+        controller_run = _run_controlled_controller(session, task, trace)
+        evidence = controller_run.evidence
+        tool_call_count = controller_run.tool_call_count
 
-        predicted = evidence["answer"]
+        predicted = evidence.answer
         raw_answer = _format_controlled_answer(task.question, evidence)
 
         return TaskResult(
@@ -644,8 +697,9 @@ def run_task_gwt_hybrid(
             tool_trace["phase"] = "preload"
             trace.append(tool_trace)
 
-        evidence, controller_calls = _run_controlled_controller(session, task, trace)
-        tool_call_count += controller_calls
+        controller_run = _run_controlled_controller(session, task, trace)
+        evidence = controller_run.evidence
+        tool_call_count += controller_run.tool_call_count
 
         prompt = _format_hybrid_prompt(task.question, evidence)
         response = client.chat.completions.create(
@@ -1018,225 +1072,79 @@ def _check_answer(predicted: str, expected: str) -> bool:
     return expected in predicted or predicted in expected
 
 
-def _question_keywords(question: str) -> list[str]:
-    return [token.strip(" ?'\".,").lower() for token in question.split() if len(token) > 3][:8]
+def _average_result_field(results: list[TaskResult], field_name: str) -> float:
+    if not results:
+        return 0.0
+    return sum(float(getattr(result, field_name)) for result in results) / len(results)
 
 
-def _format_controlled_answer(question: str, evidence: dict[str, Any]) -> str:
+def _format_controlled_answer(question: str, evidence: EvidencePlan) -> str:
     lines = [
         f"Question: {question}",
-        f"Strategy: {evidence['strategy']}",
+        f"Strategy: {evidence.strategy}",
         "Evidence:",
     ]
-    lines.extend(f"- {item}" for item in evidence["evidence"])
-    lines.append(f"ANSWER: {evidence['answer']}")
+    lines.extend(f"- {item}" for item in evidence.evidence)
+    lines.append(f"ANSWER: {evidence.answer}")
     return "\n".join(lines)
 
 
 def _build_controlled_evidence(task: BenchmarkTask) -> dict[str, Any]:
-    question = task.question
-    if "doctoral advisor" in question:
-        return _resolve_advisor_chain(task)
-    if question.startswith("How many employees have "):
-        return _resolve_count(task)
-    if question.startswith("List all employees in "):
-        return _resolve_filter(task)
-    if "average years of experience" in question:
-        return _resolve_average(task)
-    return {
-        "strategy": "fallback",
-        "answer": "",
-        "queries": [question],
-        "evidence": ["No controlled specialist matched this task."],
-    }
+    """Compatibility wrapper around benchmark evidence resolvers."""
+    return resolve_benchmark_evidence_dict(
+        task.question,
+        task.context_chunks,
+        task.metadata,
+    )
 
 
 def _run_controlled_controller(
     session: GWTSession,
     task: BenchmarkTask,
     trace: list[dict[str, Any]],
-) -> tuple[dict[str, Any], int]:
-    tool_call_count = 0
-    _goal_result, goal_trace = session.execute_tool_with_trace(
-        "gwt_set_goal",
-        {"description": task.question, "keywords": _question_keywords(task.question)},
+) -> AttentionRun:
+    controller = AttentionController(
+        session.cycle,
+        session.ingestion,
+        build_benchmark_resolvers(),
+        query_k=10,
+        admit_query_results=True,
     )
-    goal_trace["phase"] = "controller_tool"
-    trace.append(goal_trace)
-    tool_call_count += 1
-
-    evidence = _build_controlled_evidence(task)
-    trace.append({"phase": "controller", "evidence": evidence})
-    for query in evidence["queries"]:
-        _query_result, query_trace = session.execute_tool_with_trace(
-            "gwt_query",
-            {"query": query, "k": 10, "admit": True},
+    run = controller.run(
+        task.question,
+        task.context_chunks,
+        task.metadata,
+        keywords=extract_question_keywords(task.question),
+    )
+    for step in run.steps:
+        trace.append(
+            {
+                "phase": step.phase,
+                "tool": step.name if step.phase == "controller_tool" else "",
+                "result": dict(step.payload),
+            }
         )
-        query_trace["phase"] = "controller_tool"
-        trace.append(query_trace)
-        tool_call_count += 1
-
-    _broadcast_result, broadcast_trace = session.execute_tool_with_trace("gwt_broadcast", {})
-    broadcast_trace["phase"] = "controller_tool"
-    trace.append(broadcast_trace)
-    tool_call_count += 1
-    return evidence, tool_call_count
+    return run
 
 
-def _format_hybrid_prompt(question: str, evidence: dict[str, Any]) -> str:
+def _format_hybrid_prompt(question: str, evidence: EvidencePlan | dict[str, Any]) -> str:
+    if isinstance(evidence, EvidencePlan):
+        evidence_payload = evidence_plan_to_dict(evidence)
+    else:
+        evidence_payload = evidence
     lines = [
         f"Question: {question}",
-        f"GWT strategy: {evidence['strategy']}",
+        f"GWT strategy: {evidence_payload['strategy']}",
         "Evidence:",
     ]
-    if evidence["evidence"]:
-        lines.extend(f"- {item}" for item in evidence["evidence"])
+    if evidence_payload["evidence"]:
+        lines.extend(f"- {item}" for item in evidence_payload["evidence"])
     else:
         lines.append("- No matching evidence found.")
     lines.extend(
         [
-            f"Controller suggested answer: {evidence['answer']}",
+            f"Controller suggested answer: {evidence_payload['answer']}",
             "Return only the final answer using the required ANSWER format.",
         ]
     )
     return "\n".join(lines)
-
-
-def _resolve_advisor_chain(task: BenchmarkTask) -> dict[str, Any]:
-    graph: dict[str, str] = {}
-    evidence = []
-    fact_re = re.compile(r"(.+?)'s doctoral advisor was (.+?) at (.+)")
-    for chunk in task.context_chunks:
-        match = fact_re.fullmatch(chunk)
-        if match:
-            person, advisor, university = match.groups()
-            graph[person] = advisor
-            evidence.append(f"{person} -> {advisor} at {university}")
-
-    start = next((person for person in graph if person in task.question), "")
-    hops = task.question.count("doctoral advisor")
-    current = start
-    chain = []
-    for _ in range(hops):
-        if current not in graph:
-            break
-        nxt = graph[current]
-        chain.append(f"{current} -> {nxt}")
-        current = nxt
-
-    return {
-        "strategy": "advisor_chain_resolver",
-        "answer": current if len(chain) == hops else "",
-        "queries": [f"{start} doctoral advisor", " ".join(chain) or task.question],
-        "evidence": chain or evidence[:5],
-    }
-
-
-def _resolve_count(task: BenchmarkTask) -> dict[str, Any]:
-    match = re.search(r"have ([a-z_]+) = '([^']+)'", task.question)
-    if not match:
-        return _controlled_parse_error("count", task.question)
-    field, target = match.groups()
-    records = [_parse_employee_record(chunk) for chunk in task.context_chunks]
-    matched = [record for record in records if record and record.get(field) == target]
-    return {
-        "strategy": f"exact_count_{field}",
-        "answer": str(len(matched)),
-        "queries": [f"employees {field} {target}", task.question],
-        "evidence": [f"{record['name']}: {field}={target}" for record in matched],
-    }
-
-
-def _resolve_filter(task: BenchmarkTask) -> dict[str, Any]:
-    match = re.search(
-        r"List all employees in the (.+?) department who are based in (.+?)\.",
-        task.question,
-    )
-    if not match:
-        return _controlled_parse_error("filter", task.question)
-    department, location = match.groups()
-    records = [_parse_employee_record(chunk) for chunk in task.context_chunks]
-    matched = [
-        record
-        for record in records
-        if record and record["department"] == department and record["location"] == location
-    ]
-    names = sorted(record["name"] for record in matched)
-    return {
-        "strategy": "exact_filter_department_location",
-        "answer": ", ".join(names) if names else "none",
-        "queries": [f"employees {department} {location}", task.question],
-        "evidence": [
-            f"{record['name']}: department={department}, location={location}"
-            for record in matched
-        ],
-    }
-
-
-def _resolve_average(task: BenchmarkTask) -> dict[str, Any]:
-    match = re.search(
-        r"average years of experience for employees in the (.+?) department",
-        task.question,
-    )
-    if not match:
-        return _controlled_parse_error("average", task.question)
-    department = match.group(1)
-    records = [_parse_employee_record(chunk) for chunk in task.context_chunks]
-    matched = [record for record in records if record and record["department"] == department]
-    if not matched:
-        answer = "0.0"
-    else:
-        average = sum(int(record["years_experience"]) for record in matched) / len(matched)
-        answer = f"{average:.1f}"
-    return {
-        "strategy": "exact_average_years_by_department",
-        "answer": answer,
-        "queries": [f"employees {department} years experience", task.question],
-        "evidence": [
-            f"{record['name']}: years_experience={record['years_experience']}"
-            for record in matched
-        ],
-    }
-
-
-def _parse_employee_record(chunk: str) -> dict[str, str] | None:
-    pattern = re.compile(
-        r"(Employee-\d+) works in the (.+?) department, based in (.+?)\. "
-        r"Status: (.+?)\. They have (\d+) years of experience and are "
-        r"currently assigned to Project (.+?)\. Skills: (.+?)\. "
-        r"Performance score: (.+?)/5\.0\. Salary band: (.+?)\."
-    )
-    match = pattern.fullmatch(chunk)
-    if not match:
-        return None
-    (
-        name,
-        department,
-        location,
-        status,
-        years_experience,
-        project,
-        skills,
-        performance_score,
-        salary_band,
-    ) = match.groups()
-    return {
-        "name": name,
-        "department": department,
-        "location": location,
-        "status": status,
-        "years_experience": years_experience,
-        "project": project,
-        "skills": skills,
-        "performance_score": performance_score,
-        "salary_band": salary_band,
-    }
-
-
-def _controlled_parse_error(strategy: str, question: str) -> dict[str, Any]:
-    return {
-        "strategy": f"{strategy}_parse_error",
-        "answer": "",
-        "queries": [question],
-        "evidence": [f"Could not parse question: {question}"],
-    }

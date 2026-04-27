@@ -13,6 +13,7 @@
   - `competition.py`: `CompetitionEngine` and result contracts.
   - `broadcast.py`: `BroadcastAssembler`.
 - `src/gwt_context/application/`
+  - `attention.py`: reusable attention controller for goal setting, evidence planning, query admission, and broadcast.
   - `ingestion.py`: `IngestionPipeline` (content -> embedding -> persistence/index).
   - `goal_manager.py`: goal activation/modulation state.
   - `cycle.py`: `PreconsciousBuffer`, `SelectionBroadcastCycle` orchestration.
@@ -72,6 +73,13 @@
 - **Score:** `CompetitionEngine` runs all specialists and applies goal modulation.
 - **Compete:** winners are admitted to `GlobalWorkspace`; evicted items return to preconscious.
 - **Format:** `BroadcastAssembler.assemble` produces a broadcast payload (`BroadcastRecord`) and writes it to storage.
+
+### 2a) Explicit attention-controller path
+
+- `AttentionController` lives in `application/attention.py` and depends only on `CyclePort` and `IngestionPort`.
+- Task-specific planners implement the `EvidenceResolver` protocol and return an `EvidencePlan`.
+- The controller sets the active goal, runs resolver-selected queries, admits query matches into competition, then executes one broadcast cycle.
+- Benchmark resolvers are adapters under `tests/benchmarks/controlled_rules.py`; production MCP handlers do not import benchmark code.
 
 ### 3) Explicit key data path
 
