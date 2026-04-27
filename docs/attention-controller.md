@@ -19,6 +19,7 @@ The architecture now separates concerns:
 - `AttentionController` performs the reusable GWT loop through application
   ports: set goal, plan queries, admit matches, broadcast.
 - Production MCP uses a generic semantic query planner through `gwt_attend`.
+- The latest `gwt_attend` run is observable through `gwt://attention/last`.
 - Benchmarks use task-specific resolver adapters under `tests/benchmarks/`.
 - Hybrid mode lets the model synthesize from selected evidence without letting
   it control the whole tool loop.
@@ -39,3 +40,5 @@ The architecture now separates concerns:
   shape without external model calls.
 - Four-mode benchmark reports for model-backed changes that affect selection,
   admission, or prompt/tool schema behavior.
+- `--gwt-mode attend` benchmarks for the production generic planner, distinct
+  from task-specific controlled/hybrid modes.

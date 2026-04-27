@@ -5,6 +5,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from gwt_context.application.attention import AttentionTraceStore
 from gwt_context.application.cycle import PreconsciousBuffer, SelectionBroadcastCycle
 from gwt_context.application.goal_manager import GoalManager
 from gwt_context.application.ingestion import IngestionPipeline
@@ -58,8 +59,9 @@ def _build_mcp(tmp_path: Path) -> FastMCP:
         embedder=embedder,
     )
     mcp = FastMCP("gwt-context-smoke")
-    register_tools(mcp, cycle, ingestion)
-    register_resources(mcp, cycle, store)
+    attention_trace = AttentionTraceStore()
+    register_tools(mcp, cycle, ingestion, attention_trace)
+    register_resources(mcp, cycle, store, attention_trace)
     return mcp
 
 
@@ -101,6 +103,7 @@ def test_mcp_tool_and_resource_smoke(tmp_path: Path) -> None:
     stats = _tool_call(mcp, "gwt_inspect")(target="stats")
     workspace_resource = _call_resource(mcp, "gwt://workspace")
     slots_resource = _call_resource(mcp, "gwt://workspace/slots")
+    last_attention_resource = _call_resource(mcp, "gwt://attention/last")
 
     assert stored["status"] == "stored and ready for competition"
     assert goal["status"].startswith("goal set")
@@ -108,6 +111,7 @@ def test_mcp_tool_and_resource_smoke(tmp_path: Path) -> None:
     assert admitted_query_results[0]["admitted"] is True
     assert attend["evidence_plan"]["strategy"] == "generic_semantic_query_planner"
     assert "Ada Lovelace" in attend["broadcast"]
+    assert "Find Ada Lovelace" in last_attention_resource
     assert "Ada Lovelace" in broadcast
     assert stats["total_items"] == 1
     assert "Ada Lovelace" in workspace_resource

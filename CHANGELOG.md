@@ -2,6 +2,9 @@
 
 ## 2026-04-27
 
+- Added benchmark `--gwt-mode attend`, `gwt://attention/last`, and an npm benchmark smoke script.
+- Refreshed Qwen tools/attend reports after `admit=true` and prompt/schema changes, including a synthesis smoke run.
+- Expanded the generic planner with relation-aware query planning for production `gwt_attend`.
 - Added MCP `gwt_attend` for one-call goal-directed attention and added `admit` support to `gwt_query`.
 - Added a production generic evidence planner, evidence precision/recall benchmark metrics, deterministic benchmark regression smoke, and LongBench synthesis tasks.
 - Added an attention-controller architecture note documenting the controlled/hybrid design rationale and regression gates.

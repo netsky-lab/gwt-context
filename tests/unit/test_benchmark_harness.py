@@ -383,6 +383,71 @@ def test_run_benchmark_uses_hybrid_mode(monkeypatch, tmp_path: Path) -> None:
     assert report.gwt_results[0].tool_calls == 3
 
 
+def test_run_benchmark_uses_attend_mode(monkeypatch, tmp_path: Path) -> None:
+    task = BenchmarkTask(
+        id="t1",
+        question="Q",
+        context_chunks=["ctx"],
+        expected_answer="ans",
+    )
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(harness, "_build_openai_client", lambda _config: object())
+    monkeypatch.setattr(
+        harness,
+        "SentenceTransformerEmbedder",
+        lambda *args, **kwargs: object(),
+    )
+
+    def fake_attend(
+        _client: object,
+        _model: str,
+        task: BenchmarkTask,
+        _embedder: object,
+    ) -> TaskResult:
+        captured["task_id"] = task.id
+        return TaskResult(
+            task_id=task.id,
+            mode="gwt",
+            predicted_answer="ans",
+            expected_answer="ans",
+            correct=True,
+            tool_calls=4,
+            total_tokens=13,
+            latency_seconds=0.0,
+        )
+
+    monkeypatch.setattr(harness, "run_task_gwt_attend", fake_attend)
+    monkeypatch.setattr(
+        harness,
+        "run_task_baseline",
+        lambda _client, _model, task: TaskResult(
+            task_id=task.id,
+            mode="baseline",
+            predicted_answer="ans",
+            expected_answer="ans",
+            correct=True,
+            tool_calls=0,
+            total_tokens=5,
+            latency_seconds=0.0,
+        ),
+    )
+
+    report = run_benchmark(
+        benchmark_name="ruler_multi_hop",
+        tasks=[task],
+        api_base="https://api.example.com",
+        model="model-x",
+        api_key="k",
+        results_dir=tmp_path,
+        gwt_mode="attend",
+    )
+
+    assert captured["task_id"] == "t1"
+    assert report.gwt_mode == "attend"
+    assert report.gwt_results[0].tool_calls == 4
+
+
 def test_run_benchmark_rejects_misconfigured_api_path() -> None:
     with pytest.raises(ValueError, match="relative"):
         run_benchmark(

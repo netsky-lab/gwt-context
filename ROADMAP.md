@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 118 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 120 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -62,6 +62,7 @@
   - `gwt_attend` runs through public application ports and does not import benchmark resolvers.
   - `gwt_query(admit=true)` is covered by boundary and integration tests.
   - Deterministic benchmark smoke runs without external model/API calls.
+  - `--gwt-mode attend` is available for model-backed production planner evaluation.
 
 ## Medium-term
 

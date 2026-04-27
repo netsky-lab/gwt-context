@@ -3,8 +3,11 @@
 Resources provide passive read access to system state.
 """
 
+import json
+
 from mcp.server.fastmcp import FastMCP
 
+from gwt_context.application.attention import AttentionTraceStore
 from gwt_context.interfaces.ports import CyclePort, MemoryRepositoryPort
 
 
@@ -12,6 +15,7 @@ def register_resources(
     mcp: FastMCP,
     cycle: CyclePort,
     store: MemoryRepositoryPort,
+    attention_trace: AttentionTraceStore | None = None,
 ) -> None:
     """Register all GWT resources on the MCP server."""
 
@@ -84,3 +88,10 @@ def register_resources(
             f"Active goals: {stats['active_goals']}",
         ]
         return "\n".join(lines)
+
+    @mcp.resource("gwt://attention/last")
+    def last_attention_resource() -> str:
+        """Most recent gwt_attend trace."""
+        if attention_trace is None or attention_trace.get_last() is None:
+            return "No attention run recorded. Use gwt_attend first."
+        return json.dumps(attention_trace.get_last(), indent=2)

@@ -9,6 +9,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from gwt_context.application.attention import AttentionTraceStore
 from gwt_context.application.cycle import PreconsciousBuffer, SelectionBroadcastCycle
 from gwt_context.application.goal_manager import GoalManager
 from gwt_context.application.ingestion import IngestionPipeline
@@ -63,8 +64,9 @@ def build_demo_mcp(data_dir: Path) -> FastMCP:
         embedder=embedder,
     )
     mcp = FastMCP("gwt-context-demo")
-    register_tools(mcp, cycle, ingestion)
-    register_resources(mcp, cycle, store)
+    attention_trace = AttentionTraceStore()
+    register_tools(mcp, cycle, ingestion, attention_trace)
+    register_resources(mcp, cycle, store, attention_trace)
     return mcp
 
 
@@ -75,6 +77,7 @@ def run_demo() -> dict[str, Any]:
         gwt_store = _tool_call(mcp, "gwt_store")
         gwt_set_goal = _tool_call(mcp, "gwt_set_goal")
         gwt_query = _tool_call(mcp, "gwt_query")
+        gwt_attend = _tool_call(mcp, "gwt_attend")
         gwt_broadcast = _tool_call(mcp, "gwt_broadcast")
         gwt_inspect = _tool_call(mcp, "gwt_inspect")
 
@@ -88,16 +91,24 @@ def run_demo() -> dict[str, Any]:
             keywords=["Ada", "doctoral", "advisor"],
         )
         query = gwt_query("Ada Lovelace doctoral advisor", k=2)
+        attend = gwt_attend(
+            question="Find the doctoral advisor chain for Ada Lovelace",
+            keywords=["Ada", "doctoral", "advisor"],
+            k=2,
+        )
         broadcast = gwt_broadcast()
         stats = gwt_inspect("stats")
         workspace = _call_resource(mcp, "gwt://workspace")
+        last_attention = _call_resource(mcp, "gwt://attention/last")
         return {
             "stored_ids": [item["id"] for item in stored],
             "goal": goal,
             "query_count": len(query),
+            "attend": attend,
             "broadcast": broadcast,
             "stats": stats,
             "workspace": workspace,
+            "last_attention": last_attention,
         }
 
 
@@ -120,6 +131,7 @@ def main() -> None:
     print()
     print(f"Stored: {len(result['stored_ids'])}")
     print(f"Query matches: {result['query_count']}")
+    print(f"Attend strategy: {result['attend']['evidence_plan']['strategy']}")
     print(f"Stats: {result['stats']}")
 
 

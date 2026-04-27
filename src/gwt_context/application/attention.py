@@ -59,6 +59,23 @@ class AttentionRun:
     steps: tuple[AttentionStep, ...]
 
 
+class AttentionTraceStore:
+    """In-memory read model for the most recent attention run."""
+
+    def __init__(self) -> None:
+        self._last: dict[str, Any] | None = None
+
+    def record(self, question: str, run: AttentionRun) -> dict[str, Any]:
+        """Record and return a serializable trace for an attention run."""
+        trace = attention_run_to_dict(question, run)
+        self._last = trace
+        return trace
+
+    def get_last(self) -> dict[str, Any] | None:
+        """Return the most recently recorded attention trace, if any."""
+        return self._last
+
+
 class AttentionController:
     """Reusable controller for explicit GWT selection/admission.
 
@@ -185,7 +202,7 @@ class GenericEvidenceResolver:
     workspace before model reasoning.
     """
 
-    def __init__(self, max_queries: int = 3) -> None:
+    def __init__(self, max_queries: int = 4) -> None:
         self._max_queries = max_queries
 
     def resolve(
@@ -198,6 +215,7 @@ class GenericEvidenceResolver:
         queries = _dedupe_preserving_order(
             [
                 question,
+                *_relation_queries(question),
                 *_quoted_phrases(question),
                 *_capitalized_phrases(question),
                 " ".join(extract_question_keywords(question, limit=6)),
@@ -223,6 +241,25 @@ def evidence_plan_to_dict(plan: EvidencePlan) -> dict[str, Any]:
     }
 
 
+def attention_run_to_dict(question: str, run: AttentionRun) -> dict[str, Any]:
+    """Convert an attention run to a JSON-serializable trace."""
+    return {
+        "question": question,
+        "evidence_plan": evidence_plan_to_dict(run.evidence),
+        "tool_call_count": run.tool_call_count,
+        "admitted_ids": list(run.admitted_ids),
+        "broadcast": run.broadcast_text,
+        "trace": [
+            {
+                "phase": step.phase,
+                "name": step.name,
+                "payload": dict(step.payload),
+            }
+            for step in run.steps
+        ],
+    }
+
+
 def extract_question_keywords(question: str, limit: int = 8) -> list[str]:
     """Extract stable lightweight keywords from a natural-language question."""
     return [
@@ -230,6 +267,27 @@ def extract_question_keywords(question: str, limit: int = 8) -> list[str]:
         for token in question.split()
         if len(token.strip(" ?'\".,")) > 3
     ][:limit]
+
+
+def _relation_queries(text: str) -> list[str]:
+    lowered = text.lower()
+    phrases: list[str] = []
+    for relation in (
+        "doctoral advisor",
+        "worked with",
+        "average years of experience",
+        "performance score",
+        "based in",
+        "department",
+        "project",
+        "status",
+    ):
+        if relation in lowered:
+            entities = _quoted_phrases(text) + _capitalized_phrases(text)
+            if entities:
+                phrases.extend(f"{entity} {relation}" for entity in entities[:4])
+            phrases.append(relation)
+    return phrases
 
 
 def _quoted_phrases(text: str) -> list[str]:

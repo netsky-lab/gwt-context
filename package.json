@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test": "pytest"
+    "test": "pytest && python -m tests.benchmarks.regression_smoke",
+    "benchmark:smoke": "python -m tests.benchmarks.regression_smoke"
   }
 }

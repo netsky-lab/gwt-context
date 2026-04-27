@@ -5,13 +5,18 @@ from unittest.mock import Mock
 
 from mcp.server.fastmcp import FastMCP
 
+from gwt_context.application.attention import AttentionRun, AttentionTraceStore, EvidencePlan
 from gwt_context.domain.models import ActivationState, MemoryItem, MemoryType
 from gwt_context.mcp.resources import register_resources
 
 
-def _register_resources(cycle: object, store: object) -> FastMCP:
+def _register_resources(
+    cycle: object,
+    store: object,
+    attention_trace: AttentionTraceStore | None = None,
+) -> FastMCP:
     mcp = FastMCP("gwt-context-test")
-    register_resources(mcp, cycle, store)
+    register_resources(mcp, cycle, store, attention_trace)
     return mcp
 
 
@@ -132,3 +137,24 @@ class TestResourceBoundaryDelegation:
         store.get_item.assert_called_once_with("item-1")
         assert "ID: item-1" in result
         assert "State: long_term" in result
+
+    def test_last_attention_resource_reads_trace_store(self):
+        cycle = Mock()
+        store = Mock()
+        attention_trace = AttentionTraceStore()
+        attention_trace.record(
+            "Find Ada",
+            AttentionRun(
+                evidence=EvidencePlan(strategy="generic", queries=("Ada",)),
+                tool_call_count=3,
+                broadcast_text="Ada fact",
+                admitted_ids=("item-1",),
+                steps=(),
+            ),
+        )
+
+        mcp = _register_resources(cycle, store, attention_trace)
+        result = _call_resource(mcp, "gwt://attention/last")
+
+        assert '"question": "Find Ada"' in result
+        assert '"strategy": "generic"' in result

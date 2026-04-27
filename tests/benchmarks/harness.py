@@ -22,6 +22,7 @@ from gwt_context.application.attention import (
     AttentionController,
     AttentionRun,
     EvidencePlan,
+    GenericEvidenceResolver,
     evidence_plan_to_dict,
     extract_question_keywords,
 )
@@ -291,11 +292,11 @@ class BenchmarkReport:
             "avg_workspace_occupied": self.avg_workspace_occupied,
             "avg_evidence_precision": _average_result_metric(
                 self.gwt_results,
-                "evidence_precision",
+                "precision",
             ),
             "avg_evidence_recall": _average_result_metric(
                 self.gwt_results,
-                "evidence_recall",
+                "recall",
             ),
             "results": [
                 {
@@ -774,6 +775,82 @@ def run_task_gwt_hybrid(
         session.close()
 
 
+def run_task_gwt_attend(
+    client: OpenAI,
+    model: str,
+    task: BenchmarkTask,
+    embedder: SentenceTransformerEmbedder,
+) -> TaskResult:
+    """Run production generic attention routing, then ask the model to synthesize."""
+    session = GWTSession(embedder=embedder)
+    start = time.time()
+    trace: list[dict[str, Any]] = []
+    tool_call_count = 0
+    total_tokens = 0
+
+    try:
+        for chunk in task.context_chunks:
+            _result, tool_trace = session.execute_tool_with_trace("gwt_store", {"content": chunk})
+            tool_trace["phase"] = "preload"
+            trace.append(tool_trace)
+
+        controller_run = _run_attend_controller(session, task, trace)
+        evidence = controller_run.evidence
+        tool_call_count += controller_run.tool_call_count
+
+        prompt = _format_attend_prompt(task.question, evidence, session.workspace_text)
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": HYBRID_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        total_tokens = response.usage.total_tokens if response.usage else 0
+        answer_text = response.choices[0].message.content or ""
+        predicted = _extract_answer(answer_text)
+        trace.append(
+            {
+                "phase": "attend_model",
+                "content": answer_text,
+                "finish_reason": response.choices[0].finish_reason,
+                "prompt": prompt,
+            }
+        )
+
+        return TaskResult(
+            task_id=task.id,
+            mode="gwt",
+            predicted_answer=predicted,
+            expected_answer=task.expected_answer,
+            correct=_check_answer(predicted, task.expected_answer),
+            tool_calls=tool_call_count,
+            total_tokens=total_tokens,
+            latency_seconds=time.time() - start,
+            raw_answer=answer_text,
+            workspace_at_answer=session.workspace_text,
+            workspace_snapshot=session.snapshot(),
+            trace=trace,
+        )
+    except Exception as e:
+        return TaskResult(
+            task_id=task.id,
+            mode="gwt",
+            predicted_answer="",
+            expected_answer=task.expected_answer,
+            correct=False,
+            tool_calls=tool_call_count,
+            total_tokens=total_tokens,
+            latency_seconds=time.time() - start,
+            workspace_at_answer=session.workspace_text,
+            workspace_snapshot=session.snapshot(),
+            trace=trace,
+            error=str(e),
+        )
+    finally:
+        session.close()
+
+
 def run_task_baseline(
     client: OpenAI,
     model: str,
@@ -931,8 +1008,8 @@ def run_benchmark(
     config: BenchmarkConfig | None = None,
 ) -> BenchmarkReport:
     """Run full benchmark: GWT + baseline for each task."""
-    if gwt_mode not in {"tools", "controlled", "hybrid"}:
-        raise ValueError("--gwt-mode must be one of: tools, controlled, hybrid")
+    if gwt_mode not in {"tools", "controlled", "hybrid", "attend"}:
+        raise ValueError("--gwt-mode must be one of: tools, controlled, hybrid, attend")
 
     config = _resolve_benchmark_config(
         base_config=config,
@@ -974,6 +1051,7 @@ def run_benchmark(
             "tools": run_task_gwt,
             "controlled": run_task_gwt_controlled,
             "hybrid": run_task_gwt_hybrid,
+            "attend": run_task_gwt_attend,
         }[gwt_mode]
         result_gwt = gwt_runner(client, config.model, task, embedder)
         result_bl = run_task_baseline(client, config.model, task)
@@ -1201,6 +1279,35 @@ def _run_controlled_controller(
     return run
 
 
+def _run_attend_controller(
+    session: GWTSession,
+    task: BenchmarkTask,
+    trace: list[dict[str, Any]],
+) -> AttentionRun:
+    controller = AttentionController(
+        session.cycle,
+        session.ingestion,
+        [GenericEvidenceResolver(max_queries=4)],
+        query_k=10,
+        admit_query_results=True,
+    )
+    run = controller.run(
+        task.question,
+        task.context_chunks,
+        task.metadata,
+        keywords=extract_question_keywords(task.question),
+    )
+    for step in run.steps:
+        trace.append(
+            {
+                "phase": step.phase,
+                "tool": step.name if step.phase == "controller_tool" else "",
+                "result": dict(step.payload),
+            }
+        )
+    return run
+
+
 def _format_hybrid_prompt(question: str, evidence: EvidencePlan | dict[str, Any]) -> str:
     if isinstance(evidence, EvidencePlan):
         evidence_payload = evidence_plan_to_dict(evidence)
@@ -1222,3 +1329,14 @@ def _format_hybrid_prompt(question: str, evidence: EvidencePlan | dict[str, Any]
         ]
     )
     return "\n".join(lines)
+
+
+def _format_attend_prompt(question: str, evidence: EvidencePlan, workspace_text: str) -> str:
+    lines = [
+        f"Question: {question}",
+        f"GWT strategy: {evidence.strategy}",
+        "Selected workspace evidence:",
+        workspace_text or "[empty workspace]",
+        "Return only the final answer using the required ANSWER format.",
+    ]
+    return "\n\n".join(lines)

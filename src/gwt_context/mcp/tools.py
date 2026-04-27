@@ -10,7 +10,9 @@ from mcp.server.fastmcp import FastMCP
 
 from gwt_context.application.attention import (
     AttentionController,
+    AttentionTraceStore,
     GenericEvidenceResolver,
+    attention_run_to_dict,
     evidence_plan_to_dict,
 )
 from gwt_context.domain.models import MemoryType
@@ -21,6 +23,7 @@ def register_tools(
     mcp: FastMCP,
     cycle: CyclePort,
     ingestion: IngestionPort,
+    attention_trace: AttentionTraceStore | None = None,
 ) -> None:
     """Register all GWT tools on the MCP server."""
 
@@ -200,6 +203,9 @@ def register_tools(
             admit_query_results=True,
         )
         run = controller.run(question=question, keywords=keywords)
+        trace = attention_run_to_dict(question, run)
+        if attention_trace is not None:
+            trace = attention_trace.record(question, run)
         return {
             "question": question,
             "evidence_plan": evidence_plan_to_dict(run.evidence),
@@ -207,14 +213,7 @@ def register_tools(
             "admitted_ids": list(run.admitted_ids),
             "broadcast": run.broadcast_text,
             "workspace": cycle.inspect("workspace"),
-            "trace": [
-                {
-                    "phase": step.phase,
-                    "name": step.name,
-                    "payload": dict(step.payload),
-                }
-                for step in run.steps
-            ],
+            "trace": trace["trace"],
         }
 
     @mcp.tool()

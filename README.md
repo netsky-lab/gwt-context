@@ -110,6 +110,7 @@ When the goal changes, GoalLinkageSpecialist re-weights all links by relevance t
 
 MCP clients can call `gwt_attend(question, keywords?, k?)` for this path without
 manually sequencing `gwt_set_goal`, `gwt_query(admit=true)`, and `gwt_broadcast`.
+The most recent attention trace is available at `gwt://attention/last`.
 
 ## Architecture
 
@@ -171,7 +172,10 @@ Results are saved as JSON in `BENCHMARK_RESULTS_DIR` (default `tests/benchmarks/
 
 - `{benchmark}_{model}_{timestamp}_{config_hash}.json`
 
-Benchmark modes include prompt-only baseline, model-controlled `tools`, deterministic `controlled`, and `hybrid` mode where GWT selection is deterministic and the model only performs final synthesis.
+Benchmark modes include prompt-only baseline, model-controlled `tools`,
+production generic `attend`, deterministic `controlled`, and `hybrid` mode
+where GWT selection is deterministic and the model only performs final
+synthesis.
 
 Analyze failures and runtime metrics with:
 
@@ -189,6 +193,12 @@ Run a small local MCP-facing scenario without downloading embedding models:
 
 ```bash
 python examples/mcp_demo.py
+```
+
+Run the deterministic benchmark smoke used by `npm test`:
+
+```bash
+npm run benchmark:smoke
 ```
 
 ### RunPod endpoint

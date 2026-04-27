@@ -54,6 +54,8 @@ Benchmark modes:
 
 - `baseline`: implicit prompt-only comparison saved in every report.
 - `--gwt-mode tools`: the model controls GWT tool calls.
+- `--gwt-mode attend`: production generic attention planner selects workspace
+  evidence, then the model synthesizes the final answer.
 - `--gwt-mode controlled`: deterministic benchmark specialists set goals, admit
   query evidence, run broadcast, and produce the final evidence-backed answer.
 - `--gwt-mode hybrid`: deterministic GWT routing builds the evidence pack, then
@@ -105,6 +107,12 @@ Run the deterministic regression smoke without model/API calls with:
 
 ```bash
 python -m tests.benchmarks.regression_smoke
+```
+
+The same smoke is available through npm:
+
+```bash
+npm run benchmark:smoke
 ```
 
 Render a trace-heavy JSON result as browsable HTML with:
