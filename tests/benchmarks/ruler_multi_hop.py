@@ -282,7 +282,7 @@ def main():
     )
     parser.add_argument(
         "--gwt-mode",
-        choices=["tools", "controlled"],
+        choices=["tools", "controlled", "hybrid"],
         default="tools",
         help="GWT execution mode: model-controlled tools or deterministic controller",
     )

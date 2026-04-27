@@ -441,6 +441,12 @@ ANSWER: <your answer>
 
 MAX_TOOL_ROUNDS = 10
 
+HYBRID_SYSTEM_PROMPT = """Answer from the supplied GWT workspace evidence only.
+
+Do not call tools. Do not use outside knowledge. Finish with exactly:
+ANSWER: <your answer>
+"""
+
 
 def run_task_gwt(
     client: OpenAI,
@@ -581,29 +587,7 @@ def run_task_gwt_controlled(
             tool_trace["phase"] = "preload"
             trace.append(tool_trace)
 
-        _goal_result, goal_trace = session.execute_tool_with_trace(
-            "gwt_set_goal",
-            {"description": task.question, "keywords": _question_keywords(task.question)},
-        )
-        goal_trace["phase"] = "controller_tool"
-        trace.append(goal_trace)
-        tool_call_count += 1
-
-        evidence = _build_controlled_evidence(task)
-        trace.append({"phase": "controller", "evidence": evidence})
-        for query in evidence["queries"]:
-            _query_result, query_trace = session.execute_tool_with_trace(
-                "gwt_query",
-                {"query": query, "k": 10, "admit": True},
-            )
-            query_trace["phase"] = "controller_tool"
-            trace.append(query_trace)
-            tool_call_count += 1
-
-        _broadcast_result, broadcast_trace = session.execute_tool_with_trace("gwt_broadcast", {})
-        broadcast_trace["phase"] = "controller_tool"
-        trace.append(broadcast_trace)
-        tool_call_count += 1
+        evidence, tool_call_count = _run_controlled_controller(session, task, trace)
 
         predicted = evidence["answer"]
         raw_answer = _format_controlled_answer(task.question, evidence)
@@ -631,6 +615,81 @@ def run_task_gwt_controlled(
             correct=False,
             tool_calls=tool_call_count,
             total_tokens=0,
+            latency_seconds=time.time() - start,
+            workspace_at_answer=session.workspace_text,
+            workspace_snapshot=session.snapshot(),
+            trace=trace,
+            error=str(e),
+        )
+    finally:
+        session.close()
+
+
+def run_task_gwt_hybrid(
+    client: OpenAI,
+    model: str,
+    task: BenchmarkTask,
+    embedder: SentenceTransformerEmbedder,
+) -> TaskResult:
+    """Run deterministic GWT routing, then ask the model for final synthesis."""
+    session = GWTSession(embedder=embedder)
+    start = time.time()
+    trace: list[dict[str, Any]] = []
+    tool_call_count = 0
+    total_tokens = 0
+
+    try:
+        for chunk in task.context_chunks:
+            _result, tool_trace = session.execute_tool_with_trace("gwt_store", {"content": chunk})
+            tool_trace["phase"] = "preload"
+            trace.append(tool_trace)
+
+        evidence, controller_calls = _run_controlled_controller(session, task, trace)
+        tool_call_count += controller_calls
+
+        prompt = _format_hybrid_prompt(task.question, evidence)
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": HYBRID_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        total_tokens = response.usage.total_tokens if response.usage else 0
+        answer_text = response.choices[0].message.content or ""
+        predicted = _extract_answer(answer_text)
+        trace.append(
+            {
+                "phase": "hybrid_model",
+                "content": answer_text,
+                "finish_reason": response.choices[0].finish_reason,
+                "prompt": prompt,
+            }
+        )
+
+        return TaskResult(
+            task_id=task.id,
+            mode="gwt",
+            predicted_answer=predicted,
+            expected_answer=task.expected_answer,
+            correct=_check_answer(predicted, task.expected_answer),
+            tool_calls=tool_call_count,
+            total_tokens=total_tokens,
+            latency_seconds=time.time() - start,
+            raw_answer=answer_text,
+            workspace_at_answer=session.workspace_text,
+            workspace_snapshot=session.snapshot(),
+            trace=trace,
+        )
+    except Exception as e:
+        return TaskResult(
+            task_id=task.id,
+            mode="gwt",
+            predicted_answer="",
+            expected_answer=task.expected_answer,
+            correct=False,
+            tool_calls=tool_call_count,
+            total_tokens=total_tokens,
             latency_seconds=time.time() - start,
             workspace_at_answer=session.workspace_text,
             workspace_snapshot=session.snapshot(),
@@ -798,8 +857,8 @@ def run_benchmark(
     config: BenchmarkConfig | None = None,
 ) -> BenchmarkReport:
     """Run full benchmark: GWT + baseline for each task."""
-    if gwt_mode not in {"tools", "controlled"}:
-        raise ValueError("--gwt-mode must be one of: tools, controlled")
+    if gwt_mode not in {"tools", "controlled", "hybrid"}:
+        raise ValueError("--gwt-mode must be one of: tools, controlled, hybrid")
 
     config = _resolve_benchmark_config(
         base_config=config,
@@ -837,7 +896,11 @@ def run_benchmark(
     )
 
     def run_task_pair(index: int, task: BenchmarkTask) -> tuple[int, TaskResult, TaskResult]:
-        gwt_runner = run_task_gwt_controlled if gwt_mode == "controlled" else run_task_gwt
+        gwt_runner = {
+            "tools": run_task_gwt,
+            "controlled": run_task_gwt_controlled,
+            "hybrid": run_task_gwt_hybrid,
+        }[gwt_mode]
         result_gwt = gwt_runner(client, config.model, task, embedder)
         result_bl = run_task_baseline(client, config.model, task)
         return index, result_gwt, result_bl
@@ -986,6 +1049,57 @@ def _build_controlled_evidence(task: BenchmarkTask) -> dict[str, Any]:
         "queries": [question],
         "evidence": ["No controlled specialist matched this task."],
     }
+
+
+def _run_controlled_controller(
+    session: GWTSession,
+    task: BenchmarkTask,
+    trace: list[dict[str, Any]],
+) -> tuple[dict[str, Any], int]:
+    tool_call_count = 0
+    _goal_result, goal_trace = session.execute_tool_with_trace(
+        "gwt_set_goal",
+        {"description": task.question, "keywords": _question_keywords(task.question)},
+    )
+    goal_trace["phase"] = "controller_tool"
+    trace.append(goal_trace)
+    tool_call_count += 1
+
+    evidence = _build_controlled_evidence(task)
+    trace.append({"phase": "controller", "evidence": evidence})
+    for query in evidence["queries"]:
+        _query_result, query_trace = session.execute_tool_with_trace(
+            "gwt_query",
+            {"query": query, "k": 10, "admit": True},
+        )
+        query_trace["phase"] = "controller_tool"
+        trace.append(query_trace)
+        tool_call_count += 1
+
+    _broadcast_result, broadcast_trace = session.execute_tool_with_trace("gwt_broadcast", {})
+    broadcast_trace["phase"] = "controller_tool"
+    trace.append(broadcast_trace)
+    tool_call_count += 1
+    return evidence, tool_call_count
+
+
+def _format_hybrid_prompt(question: str, evidence: dict[str, Any]) -> str:
+    lines = [
+        f"Question: {question}",
+        f"GWT strategy: {evidence['strategy']}",
+        "Evidence:",
+    ]
+    if evidence["evidence"]:
+        lines.extend(f"- {item}" for item in evidence["evidence"])
+    else:
+        lines.append("- No matching evidence found.")
+    lines.extend(
+        [
+            f"Controller suggested answer: {evidence['answer']}",
+            "Return only the final answer using the required ANSWER format.",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _resolve_advisor_chain(task: BenchmarkTask) -> dict[str, Any]:

@@ -2,6 +2,9 @@
 
 ## 2026-04-27
 
+- Added hybrid GWT benchmark mode that uses deterministic GWT routing with model-only final synthesis.
+- Added benchmark trace HTML rendering and a four-mode Qwen matrix report covering prompt-only baseline, model-controlled tools, deterministic controlled routing, and hybrid routing.
+- Added MCP smoke coverage over registered tools/resources using public MCP handlers and real application wiring.
 - Added controlled GWT benchmark mode with deterministic router/specialists for RULER chains and LongBench count/filter/aggregate tasks.
 - Fixed RULER generated question wording so hop count matches expected answers.
 - Added a controlled Qwen benchmark matrix showing GWT controller performance against prompt-only baseline.

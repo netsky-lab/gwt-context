@@ -50,9 +50,14 @@ python -m tests.benchmarks.longbench_pro \
   --results-dir tests/benchmarks/results
 ```
 
-`--gwt-mode tools` lets the model control GWT tool calls. `--gwt-mode controlled`
-uses deterministic benchmark specialists to set goals, admit query evidence,
-run broadcast, and produce the final evidence-backed answer.
+Benchmark modes:
+
+- `baseline`: implicit prompt-only comparison saved in every report.
+- `--gwt-mode tools`: the model controls GWT tool calls.
+- `--gwt-mode controlled`: deterministic benchmark specialists set goals, admit
+  query evidence, run broadcast, and produce the final evidence-backed answer.
+- `--gwt-mode hybrid`: deterministic GWT routing builds the evidence pack, then
+  the model performs final synthesis without a free tool loop.
 
 `--api-path` and `--api-base` are combined deterministically; no hidden path mutation is done in tests.
 If your RunPod URL already ends with `/v1`, keep `BENCHMARK_API_PATH=/v1`; the loader will not duplicate the path.
@@ -84,4 +89,12 @@ Summarize one or more result files with:
 
 ```bash
 python -m tests.benchmarks.analyze_results tests/benchmarks/results
+```
+
+Render a trace-heavy JSON result as browsable HTML with:
+
+```bash
+python -m tests.benchmarks.render_trace \
+  tests/benchmarks/results/<result>.json \
+  --output tests/benchmarks/reports/<result>.html
 ```
