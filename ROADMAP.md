@@ -2,11 +2,13 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 129 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), and `pytest` baseline of 155 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
   - `python -m tests.benchmarks.longbench_pro`
+- Local and benchmark smoke can use `GWT_EMBEDDING_PROVIDER=hash` to avoid
+  embedding model downloads during readiness checks.
 - Task onboarding constraint is required in both `AGENTS.md` and task planning:
   - read `ARCHITECTURE.md` first,
   - record in/out boundaries, forbidden imports, and forbidden coupling checks,
@@ -67,6 +69,8 @@
     `graph`, and `hybrid`.
   - Agent-facing exact-resolution tools cover direct resolve, collection query,
     and trace explanation.
+  - Local readiness smoke covers server creation, store, graph resolve, attend,
+    trace explanation, and stats without external embedding downloads.
   - Multi-pass attention remains opt-in through `gwt_attend(passes=...)` and
     `BENCHMARK_ATTEND_PASSES` until benchmark evidence justifies a new default.
   - Structured collection tasks have explicit release gates in benchmark

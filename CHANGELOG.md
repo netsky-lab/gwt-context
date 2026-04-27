@@ -2,6 +2,7 @@
 
 ## 2026-04-27
 
+- Added deterministic hash embeddings for offline startup, a `gwt_context.smoke` readiness workflow, config env parity tests, MCP input validation, natural-language relation graph edges, and bounded Qwen smoke verification.
 - Added generic runtime record extraction, first-class collection evidence, relation graph resolution, planner modes, runtime indexing, agent-facing MCP resolve/query/trace tools, and real workload eval coverage.
 - Removed generated benchmark artifacts from git history and replaced real benchmark endpoint examples with placeholders.
 - Added structured employee collection evidence for production attend, exact count/filter/aggregate/synthesis/top-k resolution, release gates, and refreshed Qwen deploy-candidate reports.

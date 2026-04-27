@@ -91,6 +91,34 @@ def test_resolve_relation_evidence_uses_edge_relation_names() -> None:
     assert evidence.metadata["hops"] == 2
 
 
+def test_resolve_relation_evidence_accepts_worked_with_sentences() -> None:
+    evidence = resolve_relation_evidence(
+        "Who worked with the person that Ada Lovelace worked with?",
+        [
+            "Ada Lovelace worked with Grace Hopper at MIT",
+            "Grace Hopper worked with Alan Turing at Cambridge",
+        ],
+    )
+
+    assert evidence is not None
+    assert evidence.strategy == "relation_graph_worked_with"
+    assert evidence.answer == "Alan Turing"
+
+
+def test_resolve_relation_evidence_accepts_extended_by_sentences() -> None:
+    evidence = resolve_relation_evidence(
+        "Who extended the work of the person who extended Ada Lovelace's work?",
+        [
+            "Ada Lovelace discovered symbolic computation which was later extended by Grace Hopper",
+            "Grace Hopper discovered compilers which was later extended by Alan Turing",
+        ],
+    )
+
+    assert evidence is not None
+    assert evidence.strategy == "relation_graph_extended"
+    assert evidence.answer == "Alan Turing"
+
+
 def test_runtime_memory_index_deduplicates_and_exposes_collection_view() -> None:
     index = RuntimeMemoryIndex()
     index.add("Idea-001 | type=twitter | score=9")

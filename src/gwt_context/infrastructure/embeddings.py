@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from threading import Lock
 from typing import Any, Protocol
 
@@ -61,6 +62,36 @@ class SentenceTransformerEmbedder:
         assert model is not None
         embeddings = model.encode(texts)
         return _as_float_matrix(embeddings)
+
+
+class HashEmbeddingEmbedder:
+    """Deterministic local embeddings for offline smoke and tests.
+
+    This provider is intentionally simple. It avoids model downloads and network
+    access while preserving vector-search behavior for local readiness checks.
+    """
+
+    def __init__(self, dim: int = 384) -> None:
+        if dim <= 0:
+            raise ValueError("embedding dimension must be greater than 0")
+        self._dim = dim
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def embed(self, text: str) -> list[float]:
+        vector = [0.0] * self._dim
+        tokens = [token for token in text.lower().split() if token]
+        for token in tokens or [text]:
+            digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+            bucket = int.from_bytes(digest[:4], "big") % self._dim
+            sign = 1.0 if digest[4] % 2 == 0 else -1.0
+            vector[bucket] += sign
+        return vector
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        return [self.embed(text) for text in texts]
 
 
 def _as_float_list(values: Any) -> list[float]:

@@ -50,6 +50,17 @@ Add to `claude_desktop_config.json`:
 python -m gwt_context
 ```
 
+### Local readiness smoke
+
+Use hash embeddings when you want a fully local startup check without
+downloading a sentence-transformer model:
+
+```bash
+GWT_EMBEDDING_PROVIDER=hash GWT_EMBEDDING_MODEL=hash python -m gwt_context.smoke
+```
+
+The same command is available after installation as `gwt-context-smoke`.
+
 ## MCP Tools
 
 | Tool | Description |
@@ -205,6 +216,16 @@ Run the deterministic benchmark smoke used by `npm test`:
 npm run benchmark:smoke
 ```
 
+Run a tiny model-backed Qwen/OpenAI-compatible smoke while keeping local GWT
+embeddings deterministic:
+
+```bash
+GWT_EMBEDDING_PROVIDER=hash GWT_EMBEDDING_MODEL=hash \
+python -m tests.benchmarks.ruler_multi_hop \
+    --hops 2 --distractors 3 --tasks-per-config 1 --max-tasks 1 \
+    --gwt-mode attend
+```
+
 ### RunPod endpoint
 
 The benchmark entrypoints load `.env` automatically if it exists. The repository now includes `.env.example` with the current RunPod-compatible defaults:
@@ -241,9 +262,14 @@ Environment variables:
 | `GWT_WORKSPACE_CAPACITY` | `7` | Max items in workspace |
 | `GWT_BUFFER_SIZE` | `50` | Preconscious buffer size |
 | `GWT_GOAL_MODULATION` | `0.3` | Goal boost strength (0-1) |
+| `GWT_EMBEDDING_PROVIDER` | `sentence-transformer` | `sentence-transformer` or deterministic local `hash` |
 | `GWT_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence transformer model |
+| `GWT_EMBEDDING_DIM` | `384` | Vector dimension for storage/search |
 | `GWT_DATA_DIR` | `~/.gwt-context` | Storage directory |
+| `GWT_DB_PATH` | unset | Optional exact SQLite DB path override |
+| `GWT_VECTOR_INDEX_PATH` | unset | Optional exact vector index path override |
 | `GWT_MAX_BROADCAST_TOKENS` | `4000` | Max tokens per broadcast |
+| `GWT_MAX_VECTOR_ELEMENTS` | `100000` | Max vector index capacity setting |
 
 ## References
 

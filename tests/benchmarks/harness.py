@@ -36,9 +36,10 @@ from gwt_context.domain.models import MemoryType
 from gwt_context.domain.specialists import create_default_specialists
 from gwt_context.domain.workspace import GlobalWorkspace
 from gwt_context.infrastructure.config import GWTConfig
-from gwt_context.infrastructure.embeddings import SentenceTransformerEmbedder
+from gwt_context.infrastructure.embeddings import HashEmbeddingEmbedder, SentenceTransformerEmbedder
 from gwt_context.infrastructure.storage import SQLiteMemoryStore
 from gwt_context.infrastructure.vector_index import VectorIndex
+from gwt_context.interfaces.ports import EmbeddingPort
 from tests.benchmarks.config import (
     BenchmarkConfig,
     load_benchmark_config,
@@ -335,16 +336,19 @@ class GWTSession:
     def __init__(
         self,
         config: GWTConfig | None = None,
-        embedder: SentenceTransformerEmbedder | None = None,
+        embedder: EmbeddingPort | None = None,
     ) -> None:
         self._tmp = tempfile.mkdtemp()
         if config is None:
-            config = GWTConfig(data_dir=self._tmp)
+            config = GWTConfig.from_env()
+            config.data_dir = self._tmp
         else:
             config.data_dir = self._tmp
+        config.db_path_override = None
+        config.vector_index_path_override = None
         config.ensure_data_dir()
 
-        self._embedder = embedder or SentenceTransformerEmbedder(model_name=config.embedding_model)
+        self._embedder = embedder or _build_benchmark_embedder(config)
         self._store = SQLiteMemoryStore(db_path=config.db_path)
         self._vi = VectorIndex(dim=config.embedding_dim, path=None)
 
@@ -495,6 +499,18 @@ class GWTSession:
         shutil.rmtree(self._tmp, ignore_errors=True)
 
 
+def _build_benchmark_embedder(config: GWTConfig) -> EmbeddingPort:
+    provider = config.embedding_provider.lower().strip()
+    model_name = config.embedding_model.lower().strip()
+    if provider in {"hash", "deterministic", "local-hash"} or model_name in {
+        "hash",
+        "deterministic",
+        "local-hash",
+    }:
+        return HashEmbeddingEmbedder(dim=config.embedding_dim)
+    return SentenceTransformerEmbedder(model_name=config.embedding_model)
+
+
 # --- Runner ---
 
 GWT_SYSTEM_PROMPT = """You have access to a Global Workspace Theory (GWT) memory system.
@@ -527,7 +543,7 @@ def run_task_gwt(
     client: OpenAI,
     model: str,
     task: BenchmarkTask,
-    embedder: SentenceTransformerEmbedder,
+    embedder: EmbeddingPort,
 ) -> TaskResult:
     """Run a single task with GWT tools."""
     session = GWTSession(embedder=embedder)
@@ -647,7 +663,7 @@ def run_task_gwt_controlled(
     client: OpenAI,
     model: str,
     task: BenchmarkTask,
-    embedder: SentenceTransformerEmbedder,
+    embedder: EmbeddingPort,
 ) -> TaskResult:
     """Run a task with a deterministic GWT controller and specialist evidence."""
     del client, model
@@ -706,7 +722,7 @@ def run_task_gwt_hybrid(
     client: OpenAI,
     model: str,
     task: BenchmarkTask,
-    embedder: SentenceTransformerEmbedder,
+    embedder: EmbeddingPort,
 ) -> TaskResult:
     """Run deterministic GWT routing, then ask the model for final synthesis."""
     session = GWTSession(embedder=embedder)
@@ -782,7 +798,7 @@ def run_task_gwt_attend(
     client: OpenAI,
     model: str,
     task: BenchmarkTask,
-    embedder: SentenceTransformerEmbedder,
+    embedder: EmbeddingPort,
 ) -> TaskResult:
     """Run production generic attention routing, then ask the model to synthesize."""
     session = GWTSession(embedder=embedder)
@@ -1052,7 +1068,7 @@ def run_benchmark(
     )
 
     client = _build_openai_client(config)
-    embedder = SentenceTransformerEmbedder()
+    embedder = _build_benchmark_embedder(GWTConfig.from_env())
 
     if max_tasks is not None:
         if max_tasks <= 0:

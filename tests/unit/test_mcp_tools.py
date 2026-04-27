@@ -135,6 +135,32 @@ class TestBoundaryDelegation:
         cycle.enqueue_for_competition.assert_called_once_with(item)
         assert result[0]["admitted"] is True
 
+    def test_gwt_query_validates_input_without_touching_ingestion(self):
+        cycle = Mock()
+        ingestion = Mock()
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        gwt_query = _tool_call(mcp, "gwt_query")
+
+        empty = gwt_query("", k=1)
+        invalid_k = gwt_query("Ada", k=0)
+        invalid_type = gwt_query("Ada", memory_type="unknown")
+
+        assert empty["error"] == "query must not be empty"
+        assert invalid_k["error"] == "k must be >= 1"
+        assert invalid_type["error"] == "unsupported memory_type: unknown"
+        ingestion.query_similar.assert_not_called()
+
+    def test_gwt_store_rejects_empty_content_without_ingestion(self):
+        cycle = Mock()
+        ingestion = Mock()
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        result = _tool_call(mcp, "gwt_store")("   ")
+
+        assert result["error"] == "content must not be empty"
+        ingestion.ingest.assert_not_called()
+
     def test_gwt_attend_runs_application_attention_controller(self):
         """Attend should orchestrate through public cycle and ingestion APIs."""
         item = MemoryItem(
@@ -271,6 +297,15 @@ class TestBoundaryDelegation:
         assert top["answer"] == "Idea-001"
         assert top["matched_count"] == 1
         assert average["answer"] == "8.0"
+
+    def test_gwt_collection_query_validates_k(self):
+        cycle = Mock()
+        ingestion = Mock()
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        result = _tool_call(mcp, "gwt_collection_query")(operation="top_k", k=0)
+
+        assert result["error"] == "k must be >= 1"
 
     def test_gwt_resolve_uses_runtime_relation_graph(self):
         cycle = Mock()

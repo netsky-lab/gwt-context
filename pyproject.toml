@@ -25,6 +25,7 @@ bench = [
 
 [project.scripts]
 gwt-context = "gwt_context.server:main"
+gwt-context-smoke = "gwt_context.smoke:main"
 
 [build-system]
 requires = ["hatchling"]

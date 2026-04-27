@@ -132,6 +132,7 @@ From `src/gwt_context/infrastructure/config.py` and `.env` loading:
 - `GWT_WORKSPACE_CAPACITY`
 - `GWT_BUFFER_SIZE`
 - `GWT_GOAL_MODULATION`
+- `GWT_EMBEDDING_PROVIDER`
 - `GWT_EMBEDDING_MODEL`
 - `GWT_EMBEDDING_DIM`
 - `GWT_DATA_DIR`
@@ -141,6 +142,9 @@ From `src/gwt_context/infrastructure/config.py` and `.env` loading:
 - `GWT_VECTOR_INDEX_PATH` (override path if set)
 
 Defaults are applied when vars are absent via `GWTConfig.from_env()`.
+`GWT_EMBEDDING_PROVIDER=hash` selects deterministic local embeddings for
+offline readiness checks and benchmark smoke runs that should not download a
+sentence-transformer model.
 
 ## Tested Boundaries and Entry Points
 

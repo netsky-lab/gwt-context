@@ -49,10 +49,9 @@ def register_tools(
             tags: Optional tags for categorization.
             link_to: Optional list of memory item IDs to link to (enables multi-hop chains).
         """
-        try:
-            mt = MemoryType(memory_type)
-        except ValueError:
-            mt = MemoryType.SEMANTIC
+        if not content.strip():
+            return {"error": "content must not be empty"}
+        mt = _parse_memory_type(memory_type) or MemoryType.SEMANTIC
 
         item = ingestion.ingest(
             content=content,
@@ -150,7 +149,7 @@ def register_tools(
         k: int = 5,
         memory_type: str | None = None,
         admit: bool = False,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | dict[str, Any]:
         """Search long-term memory by semantic similarity.
 
         By default this returns matching items without admitting them to workspace.
@@ -162,7 +161,16 @@ def register_tools(
             memory_type: Optional filter (episodic/semantic/procedural/working).
             admit: Whether to enqueue matching items for workspace competition.
         """
-        mt = MemoryType(memory_type) if memory_type else None
+        if not query.strip():
+            return {"error": "query must not be empty"}
+        if k < 1:
+            return {"error": "k must be >= 1"}
+        mt = _parse_memory_type(memory_type)
+        if memory_type and mt is None:
+            return {
+                "error": f"unsupported memory_type: {memory_type}",
+                "supported_memory_types": [item.value for item in MemoryType],
+            }
         items = ingestion.query_similar(query=query, k=k, memory_type=mt)
         admitted_ids = []
         if admit:
@@ -306,6 +314,8 @@ def register_tools(
         collection = runtime_index.collection()
         normalized_operation = operation.lower().strip()
         criteria = {field: value} if field and value else {}
+        if k < 1:
+            return {"error": "k must be >= 1"}
 
         if normalized_operation == "count":
             records = collection.filter_equals(criteria) if criteria else collection.records
@@ -449,6 +459,15 @@ def _normalize_supported_planner(planner: str) -> str | None:
     if normalized in supported_planners():
         return normalized
     return None
+
+
+def _parse_memory_type(memory_type: str | None) -> MemoryType | None:
+    if memory_type is None:
+        return None
+    try:
+        return MemoryType(memory_type)
+    except ValueError:
+        return None
 
 
 def _context_chunks_for_question(

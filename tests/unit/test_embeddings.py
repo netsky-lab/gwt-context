@@ -1,8 +1,9 @@
 """Embedding provider contract regressions."""
 
 import numpy as np
+import pytest
 
-from gwt_context.infrastructure.embeddings import SentenceTransformerEmbedder
+from gwt_context.infrastructure.embeddings import HashEmbeddingEmbedder, SentenceTransformerEmbedder
 
 
 class ArrayBackend:
@@ -54,3 +55,21 @@ def test_sentence_transformer_embedder_lazy_load_is_thread_safe(monkeypatch) -> 
     assert embedder.embed("a") == [1.0, 2.0, 3.0]
     assert embedder.embed("b") == [1.0, 2.0, 3.0]
     assert loads == 1
+
+
+def test_hash_embedding_embedder_is_deterministic_and_sized() -> None:
+    embedder = HashEmbeddingEmbedder(dim=8)
+
+    first = embedder.embed("global workspace memory")
+    second = embedder.embed("global workspace memory")
+    other = embedder.embed("different content")
+
+    assert len(first) == 8
+    assert first == second
+    assert first != other
+    assert embedder.embed_batch(["a", "b"]) == [embedder.embed("a"), embedder.embed("b")]
+
+
+def test_hash_embedding_embedder_rejects_invalid_dimension() -> None:
+    with pytest.raises(ValueError, match="dimension"):
+        HashEmbeddingEmbedder(dim=0)

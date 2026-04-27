@@ -16,9 +16,10 @@ from gwt_context.domain.competition import CompetitionEngine
 from gwt_context.domain.specialists import create_default_specialists
 from gwt_context.domain.workspace import GlobalWorkspace
 from gwt_context.infrastructure.config import GWTConfig
-from gwt_context.infrastructure.embeddings import SentenceTransformerEmbedder
+from gwt_context.infrastructure.embeddings import HashEmbeddingEmbedder, SentenceTransformerEmbedder
 from gwt_context.infrastructure.storage import SQLiteMemoryStore
 from gwt_context.infrastructure.vector_index import VectorIndex
+from gwt_context.interfaces.ports import EmbeddingPort
 from gwt_context.mcp.resources import register_resources
 from gwt_context.mcp.tools import register_tools
 
@@ -34,7 +35,7 @@ def create_server(config: GWTConfig | None = None) -> FastMCP:
     config.ensure_data_dir()
 
     # --- Infrastructure ---
-    embedder = SentenceTransformerEmbedder(model_name=config.embedding_model)
+    embedder = _build_embedder(config)
     store = SQLiteMemoryStore(db_path=config.db_path)
     vector_index = VectorIndex(
         dim=config.embedding_dim,
@@ -82,6 +83,18 @@ def create_server(config: GWTConfig | None = None) -> FastMCP:
     register_resources(mcp, cycle, store, attention_trace)
 
     return mcp
+
+
+def _build_embedder(config: GWTConfig) -> EmbeddingPort:
+    provider = config.embedding_provider.lower().strip()
+    model_name = config.embedding_model.lower().strip()
+    if provider in {"hash", "deterministic", "local-hash"} or model_name in {
+        "hash",
+        "deterministic",
+        "local-hash",
+    }:
+        return HashEmbeddingEmbedder(dim=config.embedding_dim)
+    return SentenceTransformerEmbedder(model_name=config.embedding_model)
 
 
 def _restore_state(

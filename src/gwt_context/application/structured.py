@@ -444,6 +444,33 @@ def parse_relation_edges(chunk: str) -> tuple[RelationEdge, ...]:
             )
         )
 
+    worked_with_match = re.fullmatch(r"(.+?) worked with (.+?) at (.+)", chunk)
+    if worked_with_match:
+        source, target, _place = worked_with_match.groups()
+        edges.append(
+            RelationEdge(
+                source=source.strip(),
+                relation="worked with",
+                target=target.strip(),
+                evidence=chunk,
+            )
+        )
+
+    extended_match = re.fullmatch(
+        r"(.+?) discovered .+? which was later extended by (.+)",
+        chunk,
+    )
+    if extended_match:
+        source, target = extended_match.groups()
+        edges.append(
+            RelationEdge(
+                source=source.strip(),
+                relation="extended",
+                target=target.strip(),
+                evidence=chunk,
+            )
+        )
+
     arrow_match = re.fullmatch(r"(.+?)\s*->\s*(.+?)\s*->\s*(.+)", chunk)
     if arrow_match:
         source, relation, target = arrow_match.groups()
@@ -723,6 +750,7 @@ def _relation_from_question(question: str, edges: Sequence[RelationEdge]) -> str
         "reports to",
         "parent of",
         "cites",
+        "extended",
     ):
         relation_key = relation.lower()
         singular_key = relation_key[:-1] if relation_key.endswith("s") else relation_key

@@ -5,12 +5,15 @@ from pathlib import Path
 
 import pytest
 
+from gwt_context.infrastructure.config import GWTConfig
+from gwt_context.infrastructure.embeddings import HashEmbeddingEmbedder
 from tests.benchmarks import harness
 from tests.benchmarks.config import BenchmarkConfig
 from tests.benchmarks.harness import (
     BenchmarkTask,
     GWTSession,
     TaskResult,
+    _build_benchmark_embedder,
     _build_controlled_evidence,
     _build_openai_client,
     _format_hybrid_prompt,
@@ -45,6 +48,15 @@ def test_build_openai_client_passes_timeout_and_headers(monkeypatch) -> None:
     assert captured["timeout"] == 12
     assert captured["max_retries"] == 7
     assert captured["default_headers"] == {"X-Test": "1"}
+
+
+def test_build_benchmark_embedder_can_use_hash_provider() -> None:
+    embedder = _build_benchmark_embedder(
+        GWTConfig(embedding_provider="hash", embedding_model="hash", embedding_dim=12)
+    )
+
+    assert isinstance(embedder, HashEmbeddingEmbedder)
+    assert len(embedder.embed("local benchmark smoke")) == 12
 
 
 def test_run_benchmark_writes_deterministic_results(monkeypatch, tmp_path: Path) -> None:

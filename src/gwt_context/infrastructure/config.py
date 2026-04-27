@@ -33,6 +33,7 @@ class GWTConfig:
     })
 
     # Embeddings
+    embedding_provider: str = "sentence-transformer"
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dim: int = 384
 
@@ -40,6 +41,8 @@ class GWTConfig:
     data_dir: str = "~/.gwt-context"
     db_name: str = "memory.db"
     vector_index_name: str = "vectors.bin"
+    db_path_override: str | None = None
+    vector_index_path_override: str | None = None
     max_vector_elements: int = 100_000
 
     @property
@@ -48,10 +51,14 @@ class GWTConfig:
 
     @property
     def db_path(self) -> Path:
+        if self.db_path_override:
+            return Path(self.db_path_override).expanduser()
         return self.data_path / self.db_name
 
     @property
     def vector_index_path(self) -> Path:
+        if self.vector_index_path_override:
+            return Path(self.vector_index_path_override).expanduser()
         return self.data_path / self.vector_index_name
 
     def ensure_data_dir(self) -> None:
@@ -66,9 +73,14 @@ class GWTConfig:
             "GWT_WORKSPACE_CAPACITY": ("workspace_capacity", int),
             "GWT_BUFFER_SIZE": ("buffer_size", int),
             "GWT_GOAL_MODULATION": ("goal_modulation_strength", float),
+            "GWT_EMBEDDING_PROVIDER": ("embedding_provider", str),
             "GWT_EMBEDDING_MODEL": ("embedding_model", str),
+            "GWT_EMBEDDING_DIM": ("embedding_dim", int),
             "GWT_DATA_DIR": ("data_dir", str),
+            "GWT_DB_PATH": ("db_path_override", str),
+            "GWT_VECTOR_INDEX_PATH": ("vector_index_path_override", str),
             "GWT_MAX_BROADCAST_TOKENS": ("max_broadcast_tokens", int),
+            "GWT_MAX_VECTOR_ELEMENTS": ("max_vector_elements", int),
         }
         for env_key, (attr, type_fn) in env_map.items():
             val = os.environ.get(env_key)
