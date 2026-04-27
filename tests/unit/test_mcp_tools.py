@@ -111,3 +111,53 @@ class TestBoundaryDelegation:
         cycle.inspect.assert_called_once_with(target="stats")
         assert result["status"] == "ok"
 
+    def test_gwt_query_can_admit_results_through_cycle_api(self):
+        """Query admission should use the public cycle enqueue API."""
+        item = MemoryItem(
+            id="item-1",
+            content="Ada fact",
+            memory_type=MemoryType.SEMANTIC,
+            activation_state=ActivationState.LONG_TERM,
+        )
+        cycle = Mock()
+        cycle.enqueue_for_competition = Mock()
+        ingestion = Mock()
+        ingestion.query_similar = Mock(return_value=[item])
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        result = _tool_call(mcp, "gwt_query")("Ada", admit=True)
+
+        cycle.enqueue_for_competition.assert_called_once_with(item)
+        assert result[0]["admitted"] is True
+
+    def test_gwt_attend_runs_application_attention_controller(self):
+        """Attend should orchestrate through public cycle and ingestion APIs."""
+        item = MemoryItem(
+            id="item-1",
+            content="Ada Lovelace's doctoral advisor was Grace Hopper",
+            memory_type=MemoryType.SEMANTIC,
+            activation_state=ActivationState.PRECONSCIOUS,
+        )
+        cycle = Mock()
+        cycle.set_goal = Mock(return_value=Mock(id="goal-1", description="Find Ada", keywords=[]))
+        cycle.enqueue_for_competition = Mock()
+        cycle.run = Mock(
+            return_value=Mock(
+                id="broadcast-1",
+                formatted_content="Ada Lovelace's doctoral advisor was Grace Hopper",
+                admitted_ids=["item-1"],
+                evicted_ids=[],
+            )
+        )
+        cycle.inspect = Mock(return_value={"target": "workspace", "items": []})
+        ingestion = Mock()
+        ingestion.query_similar = Mock(return_value=[item])
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        result = _tool_call(mcp, "gwt_attend")("Find Ada Lovelace's doctoral advisor")
+
+        cycle.set_goal.assert_called_once()
+        cycle.enqueue_for_competition.assert_called()
+        cycle.run.assert_called_once()
+        assert result["evidence_plan"]["strategy"] == "generic_semantic_query_planner"
+        assert "Grace Hopper" in result["broadcast"]

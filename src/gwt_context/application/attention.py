@@ -7,6 +7,7 @@ competition, then run one selection-broadcast cycle.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -176,6 +177,41 @@ class AttentionController:
         )
 
 
+class GenericEvidenceResolver:
+    """Production-safe resolver that plans semantic queries from the question.
+
+    It does not infer task-specific answers. Its job is to select a compact set
+    of semantic lookup queries that can admit relevant memories into the
+    workspace before model reasoning.
+    """
+
+    def __init__(self, max_queries: int = 3) -> None:
+        self._max_queries = max_queries
+
+    def resolve(
+        self,
+        question: str,
+        context_chunks: Sequence[str],
+        metadata: Mapping[str, Any],
+    ) -> EvidencePlan:
+        del context_chunks, metadata
+        queries = _dedupe_preserving_order(
+            [
+                question,
+                *_quoted_phrases(question),
+                *_capitalized_phrases(question),
+                " ".join(extract_question_keywords(question, limit=6)),
+            ]
+        )
+        bounded = tuple(query for query in queries if query)[: self._max_queries]
+        return EvidencePlan(
+            strategy="generic_semantic_query_planner",
+            queries=bounded or (question,),
+            evidence=("Generic planner selected semantic queries from the question.",),
+            metadata={"planner": "generic", "query_count": len(bounded or (question,))},
+        )
+
+
 def evidence_plan_to_dict(plan: EvidencePlan) -> dict[str, Any]:
     """Convert an evidence plan to a JSON-serializable payload."""
     return {
@@ -194,3 +230,28 @@ def extract_question_keywords(question: str, limit: int = 8) -> list[str]:
         for token in question.split()
         if len(token.strip(" ?'\".,")) > 3
     ][:limit]
+
+
+def _quoted_phrases(text: str) -> list[str]:
+    phrases: list[str] = []
+    for match in re.findall(r"'([^']+)'|\"([^\"]+)\"", text):
+        phrases.extend(value.strip() for value in match if value.strip())
+    return phrases
+
+
+def _capitalized_phrases(text: str) -> list[str]:
+    pattern = re.compile(r"\b[A-Z][A-Za-z0-9.-]*(?:\s+[A-Z][A-Za-z0-9.-]*){0,4}")
+    return [match.group(0).strip() for match in pattern.finditer(text)]
+
+
+def _dedupe_preserving_order(values: Sequence[str]) -> list[str]:
+    seen: set[str] = set()
+    result = []
+    for value in values:
+        normalized = " ".join(value.split())
+        key = normalized.lower()
+        if not normalized or key in seen:
+            continue
+        result.append(normalized)
+        seen.add(key)
+    return result

@@ -1,6 +1,6 @@
 """MCP tool definitions for GWT-Context.
 
-8 tools that form the external API surface for LLM interaction.
+9 tools that form the external API surface for LLM interaction.
 Each tool maps to domain/application operations.
 """
 
@@ -8,6 +8,11 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from gwt_context.application.attention import (
+    AttentionController,
+    GenericEvidenceResolver,
+    evidence_plan_to_dict,
+)
 from gwt_context.domain.models import MemoryType
 from gwt_context.interfaces.ports import CyclePort, IngestionPort
 
@@ -136,20 +141,26 @@ def register_tools(
         query: str,
         k: int = 5,
         memory_type: str | None = None,
+        admit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search long-term memory by semantic similarity.
 
-        Returns matching items WITHOUT admitting them to workspace.
-        Use gwt_store on relevant results to make them competition-eligible,
-        or gwt_link to connect them.
+        By default this returns matching items without admitting them to workspace.
+        Set admit=true when the results should compete for the next broadcast.
 
         Args:
             query: Search query text.
             k: Number of results to return.
             memory_type: Optional filter (episodic/semantic/procedural/working).
+            admit: Whether to enqueue matching items for workspace competition.
         """
         mt = MemoryType(memory_type) if memory_type else None
         items = ingestion.query_similar(query=query, k=k, memory_type=mt)
+        admitted_ids = []
+        if admit:
+            for item in items:
+                cycle.enqueue_for_competition(item)
+                admitted_ids.append(item.id)
         return [
             {
                 "id": item.id,
@@ -159,9 +170,52 @@ def register_tools(
                 "activation_level": round(item.activation_level, 3),
                 "linked_ids": item.linked_ids,
                 "tags": item.tags,
+                "admitted": item.id in admitted_ids,
             }
             for item in items
         ]
+
+    @mcp.tool()
+    def gwt_attend(
+        question: str,
+        keywords: list[str] | None = None,
+        k: int = 5,
+    ) -> dict[str, Any]:
+        """Run an explicit attention pass for the current question.
+
+        This is a one-call path for goal-directed GWT selection:
+        set the active goal, plan semantic evidence queries, admit matches into
+        competition, run broadcast, and return the selected workspace.
+
+        Args:
+            question: Current task/question that should guide attention.
+            keywords: Optional goal keywords. If omitted, keywords are inferred.
+            k: Number of semantic matches to admit per planned query.
+        """
+        controller = AttentionController(
+            cycle=cycle,
+            ingestion=ingestion,
+            resolvers=[GenericEvidenceResolver()],
+            query_k=k,
+            admit_query_results=True,
+        )
+        run = controller.run(question=question, keywords=keywords)
+        return {
+            "question": question,
+            "evidence_plan": evidence_plan_to_dict(run.evidence),
+            "tool_call_count": run.tool_call_count,
+            "admitted_ids": list(run.admitted_ids),
+            "broadcast": run.broadcast_text,
+            "workspace": cycle.inspect("workspace"),
+            "trace": [
+                {
+                    "phase": step.phase,
+                    "name": step.name,
+                    "payload": dict(step.payload),
+                }
+                for step in run.steps
+            ],
+        }
 
     @mcp.tool()
     def gwt_evict(item_id: str) -> dict[str, Any]:

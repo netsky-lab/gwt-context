@@ -99,6 +99,8 @@
 - `mcp/resources.py`: uses cycle-derived in-memory views and repository reads for resource payloads.
 
 - `gwt_query` executes semantic lookup via `IngestionPipeline.query_similar` and returns candidates.
+- `gwt_query(admit=true)` enqueues returned candidates for the next competition round.
+- `gwt_attend` executes the explicit attention-controller path through public application ports.
 - `gwt_inspect` and MCP resources expose `workspace`, `buffer`, `goals`, and `stats` through cycle/read model paths.
 
 ## Persistence and I/O Model

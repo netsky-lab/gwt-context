@@ -20,7 +20,16 @@ def test_summarize_report_compares_gwt_and_baseline() -> None:
                 "latency_seconds": 2.0,
                 "tool_calls": 3,
                 "total_tokens": 10,
-                "workspace_snapshot": {"workspace": {"occupied_count": 2}},
+                "workspace_snapshot": {
+                    "workspace": {
+                        "occupied_count": 2,
+                        "items": [
+                            {"content": "Ada's advisor was Grace", "empty": False},
+                            {"content": "distractor", "empty": False},
+                        ],
+                    }
+                },
+                "expected_evidence": ["Ada's advisor was Grace"],
             },
             {
                 "task_id": "t1",
@@ -41,6 +50,8 @@ def test_summarize_report_compares_gwt_and_baseline() -> None:
     assert summary["gwt_token_reduction_pct"] == -100.0
     assert summary["gwt_latency_ratio"] == 2.0
     assert summary["avg_workspace_occupied"] == 2.0
+    assert summary["avg_evidence_precision"] == 0.5
+    assert summary["avg_evidence_recall"] == 1.0
     assert summary["buckets"]["gwt_only_correct"] == 1
     assert "demo - model-x" in format_markdown([summary])
 

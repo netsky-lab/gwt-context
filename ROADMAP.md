@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 113 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 118 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -53,6 +53,15 @@
   - Attention controller depends only on application ports.
   - Benchmark controlled/hybrid modes use resolver adapters instead of embedding controller flow in the harness.
   - Analyzer reports failure buckets and token/latency/workspace metrics for future regressions.
+
+### 2026-05-02 — P9 runtime attention MCP surface
+- **Owner:** MCP boundary + application architecture
+- **Inputs:** `src/gwt_context/mcp/tools.py`, `src/gwt_context/application/attention.py`, benchmark smoke.
+- **Scope:** expose explicit attention control as runtime MCP API and measure evidence selection quality.
+- **Acceptance:**
+  - `gwt_attend` runs through public application ports and does not import benchmark resolvers.
+  - `gwt_query(admit=true)` is covered by boundary and integration tests.
+  - Deterministic benchmark smoke runs without external model/API calls.
 
 ## Medium-term
 

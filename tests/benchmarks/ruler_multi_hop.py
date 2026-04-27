@@ -205,6 +205,7 @@ def generate_tasks(
                         "n_distractors": n_distractors,
                         "chain_type": chain_type,
                         "chain_facts": chain_facts,
+                        "expected_evidence": chain_facts,
                     },
                 )
                 tasks.append(task)

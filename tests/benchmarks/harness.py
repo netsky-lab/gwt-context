@@ -108,13 +108,18 @@ GWT_TOOLS = [
             "name": "gwt_query",
             "description": (
                 "Search long-term memory by semantic similarity. "
-                "Returns items without admitting to workspace."
+                "Set admit=true to enqueue returned items for workspace competition."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
                     "k": {"type": "integer", "default": 5},
+                    "admit": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Whether to admit returned items into competition.",
+                    },
                 },
                 "required": ["query"],
             },
@@ -172,6 +177,8 @@ class TaskResult:
     workspace_snapshot: dict[str, Any] = field(default_factory=dict)
     trace: list[dict[str, Any]] = field(default_factory=list)
     error: str = ""
+    task_metadata: dict[str, Any] = field(default_factory=dict)
+    expected_evidence: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -282,6 +289,14 @@ class BenchmarkReport:
             "avg_gwt_latency": self.avg_gwt_latency,
             "avg_baseline_latency": self.avg_baseline_latency,
             "avg_workspace_occupied": self.avg_workspace_occupied,
+            "avg_evidence_precision": _average_result_metric(
+                self.gwt_results,
+                "evidence_precision",
+            ),
+            "avg_evidence_recall": _average_result_metric(
+                self.gwt_results,
+                "evidence_recall",
+            ),
             "results": [
                 {
                     "task_id": r.task_id,
@@ -297,6 +312,10 @@ class BenchmarkReport:
                     "workspace_snapshot": r.workspace_snapshot,
                     "trace": r.trace,
                     "error": r.error,
+                    "task_metadata": r.task_metadata,
+                    "expected_evidence": r.expected_evidence,
+                    "evidence_precision": _result_evidence_metrics(r)["precision"],
+                    "evidence_recall": _result_evidence_metrics(r)["recall"],
                 }
                 for r in self.results
             ],
@@ -481,13 +500,14 @@ Use the tools as an active working-memory loop, not as optional search.
 
 Required workflow:
 1. First call gwt_set_goal with the exact question and useful keywords.
-2. Call gwt_query for the key entity/attribute in the question.
+2. Call gwt_query with admit=true for the key entity/attribute in the question.
 3. Call gwt_broadcast to admit the most relevant facts into the workspace.
 4. If the answer needs multiple hops, call gwt_query or gwt_link, then gwt_broadcast again.
 5. Answer only from the question and broadcast/query evidence.
 
 IMPORTANT: Finish with exactly this format:
 ANSWER: <your answer>
+Do not print tool-call markup as text. If you need a tool, use the official tool call channel.
 """
 
 MAX_TOOL_ROUNDS = 10
@@ -957,6 +977,10 @@ def run_benchmark(
         }[gwt_mode]
         result_gwt = gwt_runner(client, config.model, task, embedder)
         result_bl = run_task_baseline(client, config.model, task)
+        expected_evidence = _expected_evidence_for_task(task)
+        for result in (result_gwt, result_bl):
+            result.task_metadata = dict(task.metadata)
+            result.expected_evidence = list(expected_evidence)
         return index, result_gwt, result_bl
 
     task_results: list[tuple[TaskResult, TaskResult] | None] = [None] * len(tasks)
@@ -1076,6 +1100,56 @@ def _average_result_field(results: list[TaskResult], field_name: str) -> float:
     if not results:
         return 0.0
     return sum(float(getattr(result, field_name)) for result in results) / len(results)
+
+
+def _average_result_metric(results: list[TaskResult], metric_name: str) -> float:
+    values = []
+    for result in results:
+        metrics = _result_evidence_metrics(result)
+        if metrics["available"]:
+            values.append(metrics[metric_name])
+    if not values:
+        return 0.0
+    return sum(values) / len(values)
+
+
+def _expected_evidence_for_task(task: BenchmarkTask) -> list[str]:
+    raw = task.metadata.get("expected_evidence") or task.metadata.get("chain_facts") or []
+    return [str(item) for item in raw]
+
+
+def _result_evidence_metrics(result: TaskResult) -> dict[str, float | bool]:
+    expected = [item for item in result.expected_evidence if item]
+    workspace_items = result.workspace_snapshot.get("workspace", {}).get("items", [])
+    contents = [
+        str(item.get("content", ""))
+        for item in workspace_items
+        if isinstance(item, dict) and not item.get("empty") and item.get("content")
+    ]
+    if not expected or not contents:
+        return {"precision": 0.0, "recall": 0.0, "available": False}
+
+    matched_expected = [
+        evidence
+        for evidence in expected
+        if any(_evidence_matches(evidence, content) for content in contents)
+    ]
+    relevant_workspace_items = [
+        content
+        for content in contents
+        if any(_evidence_matches(evidence, content) for evidence in expected)
+    ]
+    return {
+        "precision": len(relevant_workspace_items) / len(contents),
+        "recall": len(matched_expected) / len(expected),
+        "available": True,
+    }
+
+
+def _evidence_matches(expected: str, content: str) -> bool:
+    expected_norm = " ".join(expected.lower().split())
+    content_norm = " ".join(content.lower().split())
+    return expected_norm in content_norm or content_norm in expected_norm
 
 
 def _format_controlled_answer(question: str, evidence: EvidencePlan) -> str:

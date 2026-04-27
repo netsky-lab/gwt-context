@@ -77,6 +77,7 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     avg_baseline_latency = _average(
         [r.get("latency_seconds", 0.0) for r in baseline_results]
     )
+    evidence_precision, evidence_recall = _evidence_summary(gwt_results)
     return {
         "path": report.get("_path", ""),
         "benchmark_name": report.get("benchmark_name", ""),
@@ -93,6 +94,8 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
         "gwt_token_reduction_pct": _reduction_pct(avg_baseline_tokens, avg_gwt_tokens),
         "gwt_latency_ratio": _ratio(avg_gwt_latency, avg_baseline_latency),
         "avg_workspace_occupied": _average_workspace_occupied(gwt_results),
+        "avg_evidence_precision": evidence_precision,
+        "avg_evidence_recall": evidence_recall,
         "buckets": buckets,
         "failure_buckets": dict(sorted(failure_buckets.items())),
         "examples": examples,
@@ -150,6 +153,8 @@ def format_markdown(summaries: list[dict[str, Any]]) -> str:
                 f"- GWT token reduction vs baseline: {summary['gwt_token_reduction_pct']:+.1f}%",
                 f"- GWT/baseline latency ratio: {summary['gwt_latency_ratio']:.2f}x",
                 f"- Avg workspace occupied: {summary['avg_workspace_occupied']:.2f}",
+                f"- Avg evidence precision: {summary['avg_evidence_precision']:.1%}",
+                f"- Avg evidence recall: {summary['avg_evidence_recall']:.1%}",
                 "",
                 "Outcome buckets:",
             ]
@@ -206,6 +211,44 @@ def _average_workspace_occupied(results: list[dict[str, Any]]) -> float:
         workspace = result.get("workspace_snapshot", {}).get("workspace", {})
         counts.append(workspace.get("occupied_count", 0))
     return _average(counts)
+
+
+def _evidence_summary(results: list[dict[str, Any]]) -> tuple[float, float]:
+    precisions = []
+    recalls = []
+    for result in results:
+        if "evidence_precision" in result and "evidence_recall" in result:
+            precisions.append(float(result.get("evidence_precision", 0.0)))
+            recalls.append(float(result.get("evidence_recall", 0.0)))
+            continue
+        expected = [str(item) for item in result.get("expected_evidence", []) if item]
+        workspace_items = result.get("workspace_snapshot", {}).get("workspace", {}).get("items", [])
+        contents = [
+            str(item.get("content", ""))
+            for item in workspace_items
+            if isinstance(item, dict) and not item.get("empty") and item.get("content")
+        ]
+        if not expected or not contents:
+            continue
+        matched_expected = [
+            evidence
+            for evidence in expected
+            if any(_evidence_matches(evidence, content) for content in contents)
+        ]
+        relevant_contents = [
+            content
+            for content in contents
+            if any(_evidence_matches(evidence, content) for evidence in expected)
+        ]
+        precisions.append(len(relevant_contents) / len(contents))
+        recalls.append(len(matched_expected) / len(expected))
+    return _average(precisions), _average(recalls)
+
+
+def _evidence_matches(expected: str, content: str) -> bool:
+    expected_norm = " ".join(expected.lower().split())
+    content_norm = " ".join(content.lower().split())
+    return expected_norm in content_norm or content_norm in expected_norm
 
 
 def main() -> None:

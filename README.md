@@ -58,7 +58,8 @@ python -m gwt_context
 | `gwt_set_goal` | Set active goal — biases competition toward goal-relevant items |
 | `gwt_broadcast` | Run selection-broadcast cycle — returns workspace content |
 | `gwt_compete` | Competition round without broadcast (dry-run) |
-| `gwt_query` | Semantic search over long-term memory |
+| `gwt_query` | Semantic search over long-term memory, optionally admitted to competition |
+| `gwt_attend` | One-call goal-directed attention pass: plan queries, admit matches, broadcast |
 | `gwt_evict` | Manual eviction from workspace |
 | `gwt_link` | Bidirectional link between items (enables multi-hop chains) |
 | `gwt_inspect` | Observe workspace, buffer, goals, stats |
@@ -107,6 +108,9 @@ When the goal changes, GoalLinkageSpecialist re-weights all links by relevance t
 
 `gwt_context.application.attention.AttentionController` provides a reusable path for deterministic selection: set the goal, resolve an evidence plan, query/admit matching memories, then broadcast. Benchmarks use task-specific resolver adapters, but the controller itself depends only on application ports.
 
+MCP clients can call `gwt_attend(question, keywords?, k?)` for this path without
+manually sequencing `gwt_set_goal`, `gwt_query(admit=true)`, and `gwt_broadcast`.
+
 ## Architecture
 
 ```
@@ -118,6 +122,7 @@ src/gwt_context/
 │   ├── competition.py # CompetitionEngine (scoring + eviction)
 │   └── broadcast.py  # BroadcastAssembler (workspace → text)
 ├── application/      # Orchestration
+│   ├── attention.py  # Explicit attention controller
 │   ├── cycle.py      # SelectionBroadcastCycle + PreconsciousBuffer
 │   ├── ingestion.py  # Content → MemoryItem pipeline
 │   └── goal_manager.py
@@ -159,6 +164,7 @@ python -m tests.benchmarks.longbench_pro
 ```
 
 See [`tests/benchmarks/README.md`](tests/benchmarks/README.md) for the full variable matrix, command examples, and reproducible output behavior.
+See [`docs/attention-controller.md`](docs/attention-controller.md) for the architecture note behind the controlled/hybrid design.
 
 Each benchmark runs GWT mode (with tools) and baseline mode (all context in prompt) for comparison.
 Results are saved as JSON in `BENCHMARK_RESULTS_DIR` (default `tests/benchmarks/results/`) using deterministic filenames:

@@ -114,7 +114,17 @@ def _gen_count_task(
         question=f"How many employees have {field} = '{target}'? Give just the number.",
         context_chunks=chunks,
         expected_answer=str(count),
-        metadata={"task_type": "count", "field": field, "target": target, "n_records": n_records},
+        metadata={
+            "task_type": "count",
+            "field": field,
+            "target": target,
+            "n_records": n_records,
+            "expected_evidence": [
+                _record_to_text(record)
+                for record in records
+                if record[field] == target
+            ],
+        },
     )
 
 
@@ -147,6 +157,7 @@ def _gen_filter_task(
             "department": dept,
             "location": location,
             "n_records": n_records,
+            "expected_evidence": [_record_to_text(record) for record in matches],
         },
     )
 
@@ -170,7 +181,12 @@ def _gen_aggregate_task(
         ),
         context_chunks=chunks,
         expected_answer=str(avg_exp),
-        metadata={"task_type": "aggregate", "department": dept, "n_records": n_records},
+        metadata={
+            "task_type": "aggregate",
+            "department": dept,
+            "n_records": n_records,
+            "expected_evidence": [_record_to_text(record) for record in dept_records],
+        },
     )
 
 
@@ -194,7 +210,50 @@ def _gen_top_k_task(
         ),
         context_chunks=chunks,
         expected_answer=answer,
-        metadata={"task_type": "top_k", "k": k, "n_records": n_records},
+        metadata={
+            "task_type": "top_k",
+            "k": k,
+            "n_records": n_records,
+            "expected_evidence": [_record_to_text(record) for record in top_k],
+        },
+    )
+
+
+def _gen_synthesis_task(
+    rng: random.Random, records: list[dict], task_idx: int, n_records: int,
+) -> BenchmarkTask:
+    """Compare two departments and require a compact explanatory synthesis."""
+    departments = list({record["department"] for record in records})
+    rng.shuffle(departments)
+    dept_a, dept_b = departments[:2]
+    records_a = [record for record in records if record["department"] == dept_a]
+    records_b = [record for record in records if record["department"] == dept_b]
+    avg_a = sum(record["years_experience"] for record in records_a) / len(records_a)
+    avg_b = sum(record["years_experience"] for record in records_b) / len(records_b)
+    winner = dept_a if avg_a >= avg_b else dept_b
+
+    chunks = [_record_to_text(record) for record in records]
+    rng.shuffle(chunks)
+
+    return BenchmarkTask(
+        id=f"lbp_synthesis_{n_records}rec_{task_idx}",
+        question=(
+            f"Which department has the higher average years of experience, {dept_a} or "
+            f"{dept_b}? Answer with the department name and a brief reason."
+        ),
+        context_chunks=chunks,
+        expected_answer=winner,
+        metadata={
+            "task_type": "synthesis",
+            "department_a": dept_a,
+            "department_b": dept_b,
+            "average_a": round(avg_a, 1),
+            "average_b": round(avg_b, 1),
+            "n_records": n_records,
+            "expected_evidence": [
+                _record_to_text(record) for record in [*records_a, *records_b]
+            ],
+        },
     )
 
 
@@ -203,6 +262,7 @@ TASK_GENERATORS = {
     "filter": _gen_filter_task,
     "aggregate": _gen_aggregate_task,
     "top_k": _gen_top_k_task,
+    "synthesis": _gen_synthesis_task,
 }
 
 

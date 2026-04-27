@@ -52,6 +52,7 @@ def test_run_benchmark_writes_deterministic_results(monkeypatch, tmp_path: Path)
         question="Q",
         context_chunks=["ctx"],
         expected_answer="ans",
+        metadata={"expected_evidence": ["ctx"]},
     )
 
     def fake_build_client(config: BenchmarkConfig):
@@ -116,6 +117,9 @@ def test_run_benchmark_writes_deterministic_results(monkeypatch, tmp_path: Path)
     assert "raw_answer" in saved["results"][0]
     assert "workspace_snapshot" in saved["results"][0]
     assert "trace" in saved["results"][0]
+    assert saved["results"][0]["task_metadata"] == {"expected_evidence": ["ctx"]}
+    assert saved["results"][0]["expected_evidence"] == ["ctx"]
+    assert "evidence_precision" in saved["results"][0]
 
 
 def test_run_benchmark_reuses_and_overrides_config(monkeypatch, tmp_path: Path) -> None:

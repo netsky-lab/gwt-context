@@ -3,7 +3,11 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from gwt_context.application.attention import AttentionController, EvidencePlan
+from gwt_context.application.attention import (
+    AttentionController,
+    EvidencePlan,
+    GenericEvidenceResolver,
+)
 from gwt_context.domain.models import Goal, MemoryItem
 
 
@@ -81,3 +85,16 @@ def test_attention_controller_falls_back_to_question_query() -> None:
     ingestion.query_similar.assert_called_once_with(query="Q", k=10)
     assert result.evidence.strategy == "fallback"
     assert result.tool_call_count == 3
+
+
+def test_generic_evidence_resolver_plans_question_queries() -> None:
+    plan = GenericEvidenceResolver(max_queries=3).resolve(
+        "Who advised 'Ada Lovelace' at MIT?",
+        [],
+        {},
+    )
+
+    assert plan.strategy == "generic_semantic_query_planner"
+    assert plan.queries[0] == "Who advised 'Ada Lovelace' at MIT?"
+    assert "Ada Lovelace" in plan.queries
+    assert len(plan.queries) == 3

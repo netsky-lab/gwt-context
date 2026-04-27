@@ -97,8 +97,15 @@ python -m tests.benchmarks.analyze_results tests/benchmarks/results
 ```
 
 The analyzer reports accuracy, token/latency ratios, workspace occupancy, and
-GWT failure buckets such as `max_tool_rounds`, `tool_markup_as_answer`, and
-`wrong_after_tool_loop`.
+evidence precision/recall when expected evidence metadata is available. It also
+reports GWT failure buckets such as `max_tool_rounds`, `tool_markup_as_answer`,
+and `wrong_after_tool_loop`.
+
+Run the deterministic regression smoke without model/API calls with:
+
+```bash
+python -m tests.benchmarks.regression_smoke
+```
 
 Render a trace-heavy JSON result as browsable HTML with:
 

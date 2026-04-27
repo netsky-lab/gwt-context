@@ -15,8 +15,9 @@ def build_benchmark_resolvers() -> tuple[EvidenceResolver, ...]:
         AdvisorChainResolver(),
         EmployeeCountResolver(),
         EmployeeFilterResolver(),
-        EmployeeAverageResolver(),
         EmployeeTopKResolver(),
+        EmployeeDepartmentComparisonResolver(),
+        EmployeeAverageResolver(),
     )
 
 
@@ -225,6 +226,56 @@ class EmployeeTopKResolver:
                 f"{record['name']}: performance_score={record['performance_score']}"
                 for record in ranked
             ),
+        )
+
+
+class EmployeeDepartmentComparisonResolver:
+    """Resolve synthesis tasks comparing average experience across departments."""
+
+    def resolve(
+        self,
+        question: str,
+        context_chunks: Sequence[str],
+        metadata: Mapping[str, Any],
+    ) -> EvidencePlan | None:
+        del metadata
+        if "higher average years of experience" not in question:
+            return None
+
+        match = re.search(
+            r"higher average years of experience, (.+?) or (.+?)\?",
+            question,
+        )
+        if not match:
+            return _parse_error("department_comparison", question)
+        dept_a, dept_b = match.groups()
+        records = [record for chunk in context_chunks if (record := _parse_employee_record(chunk))]
+        records_a = [record for record in records if record["department"] == dept_a]
+        records_b = [record for record in records if record["department"] == dept_b]
+        if not records_a or not records_b:
+            return EvidencePlan(
+                strategy="department_comparison_missing_records",
+                answer="",
+                queries=(f"employees {dept_a} {dept_b} years experience", question),
+                evidence=("Could not find records for both departments.",),
+            )
+
+        avg_a = sum(int(record["years_experience"]) for record in records_a) / len(records_a)
+        avg_b = sum(int(record["years_experience"]) for record in records_b) / len(records_b)
+        winner = dept_a if avg_a >= avg_b else dept_b
+        return EvidencePlan(
+            strategy="compare_department_average_experience",
+            answer=winner,
+            queries=(
+                f"employees {dept_a} years experience",
+                f"employees {dept_b} years experience",
+                question,
+            ),
+            evidence=(
+                f"{dept_a}: average_years_experience={avg_a:.1f}",
+                f"{dept_b}: average_years_experience={avg_b:.1f}",
+            ),
+            metadata={"average_a": round(avg_a, 1), "average_b": round(avg_b, 1)},
         )
 
 

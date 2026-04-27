@@ -2,6 +2,9 @@
 
 ## 2026-04-27
 
+- Added MCP `gwt_attend` for one-call goal-directed attention and added `admit` support to `gwt_query`.
+- Added a production generic evidence planner, evidence precision/recall benchmark metrics, deterministic benchmark regression smoke, and LongBench synthesis tasks.
+- Added an attention-controller architecture note documenting the controlled/hybrid design rationale and regression gates.
 - Added reusable `AttentionController` in the application layer for goal-directed evidence planning, query admission, and broadcast through ports.
 - Moved benchmark-specific controlled evidence logic into a resolver registry, including top-k employee aggregation support.
 - Extended benchmark analysis with failure buckets, token/latency ratios, workspace occupancy metrics, and an updated four-mode Qwen report.
