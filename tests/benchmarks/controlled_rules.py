@@ -215,8 +215,10 @@ class EmployeeTopKResolver:
         records = [record for chunk in context_chunks if (record := _parse_employee_record(chunk))]
         ranked = sorted(
             records,
-            key=lambda record: float(record["performance_score"]),
-            reverse=True,
+            key=lambda record: (
+                -float(record["performance_score"]),
+                _employee_index(record["name"]),
+            ),
         )[:k]
         return EvidencePlan(
             strategy="exact_top_k_performance_score",
@@ -311,6 +313,11 @@ def _parse_employee_record(chunk: str) -> dict[str, str] | None:
         "performance_score": performance_score,
         "salary_band": salary_band,
     }
+
+
+def _employee_index(name: str) -> int:
+    match = re.search(r"(\d+)$", name)
+    return int(match.group(1)) if match else 0
 
 
 def _parse_error(strategy: str, question: str) -> EvidencePlan:

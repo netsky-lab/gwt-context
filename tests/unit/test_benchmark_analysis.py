@@ -52,11 +52,47 @@ def test_summarize_report_compares_gwt_and_baseline() -> None:
     assert summary["avg_workspace_occupied"] == 2.0
     assert summary["avg_evidence_precision"] == 0.5
     assert summary["avg_evidence_recall"] == 1.0
+    assert summary["family_metrics"]["unknown"]["accuracy"] == 1.0
     assert summary["buckets"]["gwt_only_correct"] == 1
     rendered = format_markdown([summary])
     assert "## Comparison Table" in rendered
     assert "| Benchmark | Mode | Tasks | GWT acc | Baseline acc |" in rendered
+    assert "## Release Gates" not in rendered
     assert "demo - model-x" in rendered
+
+
+def test_format_markdown_renders_release_gates_for_known_task_families() -> None:
+    summary = summarize_report(
+        {
+            "_path": "result.json",
+            "benchmark_name": "longbench_pro",
+            "model": "model-x",
+            "results": [
+                {
+                    "task_id": "lbp_topk_30rec_0",
+                    "mode": "gwt",
+                    "correct": True,
+                    "latency_seconds": 1.0,
+                    "tool_calls": 2,
+                    "total_tokens": 0,
+                    "workspace_snapshot": {"workspace": {"occupied_count": 1, "items": []}},
+                },
+                {
+                    "task_id": "lbp_topk_30rec_0",
+                    "mode": "baseline",
+                    "correct": False,
+                    "latency_seconds": 1.0,
+                    "tool_calls": 0,
+                    "total_tokens": 10,
+                },
+            ],
+        }
+    )
+
+    rendered = format_markdown([summary])
+
+    assert "## Release Gates" in rendered
+    assert "| top_k | pass | 100.0% | 80.0% |" in rendered
 
 
 def test_classify_gwt_failure_detects_tool_loop_pathologies() -> None:

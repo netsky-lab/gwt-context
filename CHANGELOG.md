@@ -2,6 +2,8 @@
 
 ## 2026-04-27
 
+- Removed generated benchmark artifacts from git history and replaced real benchmark endpoint examples with placeholders.
+- Added structured employee collection evidence for production attend, exact count/filter/aggregate/synthesis/top-k resolution, release gates, and refreshed Qwen deploy-candidate reports.
 - Added parameterized multi-pass `gwt_attend`, structured generic planner queries, attend failure analysis, and a release baseline documenting deploy readiness.
 - Added benchmark comparison tables with evidence metrics and refreshed one-pass/two-pass Qwen attend reports for RULER and LongBench Pro.
 - Added benchmark `--gwt-mode attend`, `gwt://attention/last`, and an npm benchmark smoke script.

@@ -78,6 +78,7 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
         [r.get("latency_seconds", 0.0) for r in baseline_results]
     )
     evidence_precision, evidence_recall = _evidence_summary(gwt_results)
+    family_metrics = _family_metrics(gwt_results)
     return {
         "path": report.get("_path", ""),
         "benchmark_name": report.get("benchmark_name", ""),
@@ -96,6 +97,7 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
         "avg_workspace_occupied": _average_workspace_occupied(gwt_results),
         "avg_evidence_precision": evidence_precision,
         "avg_evidence_recall": evidence_recall,
+        "family_metrics": family_metrics,
         "buckets": buckets,
         "failure_buckets": dict(sorted(failure_buckets.items())),
         "examples": examples,
@@ -159,6 +161,22 @@ def format_markdown(summaries: list[dict[str, Any]]) -> str:
                 f"{summary['gwt_token_reduction_pct']:+.1f}% |"
             )
         lines.append("")
+        gate_rows = _release_gate_rows(summaries)
+        if gate_rows:
+            lines.extend(
+                [
+                    "## Release Gates",
+                    "",
+                    "| Gate | Status | Actual | Threshold |",
+                    "| --- | --- | ---: | ---: |",
+                ]
+            )
+            for row in gate_rows:
+                lines.append(
+                    f"| {row['name']} | {row['status']} | "
+                    f"{row['actual']:.1%} | {row['threshold']:.1%} |"
+                )
+            lines.append("")
 
     for summary in summaries:
         lines.extend(
@@ -242,6 +260,9 @@ def _evidence_summary(results: list[dict[str, Any]]) -> tuple[float, float]:
     recalls = []
     for result in results:
         if "evidence_precision" in result and "evidence_recall" in result:
+            expected = [str(item) for item in result.get("expected_evidence", []) if item]
+            if result.get("evidence_available") is False or not expected:
+                continue
             precisions.append(float(result.get("evidence_precision", 0.0)))
             recalls.append(float(result.get("evidence_recall", 0.0)))
             continue
@@ -273,6 +294,70 @@ def _evidence_matches(expected: str, content: str) -> bool:
     expected_norm = " ".join(expected.lower().split())
     content_norm = " ".join(content.lower().split())
     return expected_norm in content_norm or content_norm in expected_norm
+
+
+def _family_metrics(results: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for result in results:
+        grouped[_task_family(str(result.get("task_id", "")))].append(result)
+
+    metrics: dict[str, dict[str, float]] = {}
+    for family, family_results in grouped.items():
+        precision, recall = _evidence_summary(family_results)
+        metrics[family] = {
+            "accuracy": _accuracy(family_results),
+            "evidence_precision": precision,
+            "evidence_recall": recall,
+            "task_count": float(len(family_results)),
+        }
+    return dict(sorted(metrics.items()))
+
+
+def _task_family(task_id: str) -> str:
+    if task_id.startswith("ruler_"):
+        return "ruler"
+    if task_id.startswith("lbp_count_"):
+        return "count"
+    if task_id.startswith("lbp_filter_"):
+        return "filter"
+    if task_id.startswith("lbp_aggregate_"):
+        return "aggregate"
+    if task_id.startswith("lbp_synthesis_"):
+        return "synthesis"
+    if task_id.startswith("lbp_topk_"):
+        return "top_k"
+    return "unknown"
+
+
+def _release_gate_rows(summaries: list[dict[str, Any]]) -> list[dict[str, float | str]]:
+    thresholds = {
+        "ruler": 0.90,
+        "count": 0.90,
+        "filter": 0.90,
+        "aggregate": 0.90,
+        "synthesis": 0.80,
+        "top_k": 0.80,
+    }
+    best_by_family: dict[str, float] = {}
+    for summary in summaries:
+        for family, metrics in summary.get("family_metrics", {}).items():
+            accuracy = float(metrics.get("accuracy", 0.0))
+            best_by_family[family] = max(best_by_family.get(family, 0.0), accuracy)
+
+    rows: list[dict[str, float | str]] = []
+    for family, threshold in thresholds.items():
+        if family not in best_by_family:
+            continue
+        actual = best_by_family[family]
+        rows.append(
+            {
+                "name": family,
+                "status": "pass" if actual >= threshold else "fail",
+                "actual": actual,
+                "threshold": threshold,
+            }
+        )
+    return rows
 
 
 def main() -> None:

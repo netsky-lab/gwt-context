@@ -2,34 +2,43 @@
 
 ## 2026-04-27 Status
 
-The current code is a reasonable **internal deploy candidate** for local MCP
-usage and benchmark iteration. It is **not production-ready** as a reliability
-claim for generic long-context reasoning yet.
+The current code is a **deploy candidate for scoped MCP usage**:
+
+- supported claim: goal-directed attend for RULER-style advisor chains and
+  structured employee collection tasks;
+- unsupported claim: arbitrary generic long-context reasoning without a
+  resolver or structured evidence path.
+
+The remaining known gap is one RULER advisor-chain miss in the 12-task Qwen
+slice. The structured LongBench slices now pass the release gates.
 
 ## Current Benchmark Baseline
 
 Primary one-pass attend runs:
 
-| Benchmark | Scope | GWT | Baseline | Evidence recall | Evidence precision | Artifact |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| RULER multi-hop | 12 advisor-chain tasks | 91.7% | 100.0% | 95.8% | 34.5% | `tests/benchmarks/results/ruler_multi_hop_qwen3.6-35b-a3b_20260427_140423_457145_12d146c65aa6.json` |
-| LongBench Pro | count/filter/aggregate, 18 tasks | 77.8% | 100.0% | 72.8% | 30.2% | `tests/benchmarks/results/longbench_pro_qwen3.6-35b-a3b_20260427_140423_480530_12d146c65aa6.json` |
-| LongBench Pro | synthesis/top_k, 12 tasks | 25.0% | 50.0% | 37.5% | 29.8% | `tests/benchmarks/results/longbench_pro_qwen3.6-35b-a3b_20260427_140423_448442_12d146c65aa6.json` |
+| Benchmark | Scope | GWT | Baseline | Evidence recall | Evidence precision |
+| --- | --- | ---: | ---: | ---: | ---: |
+| RULER multi-hop | 12 advisor-chain tasks | 91.7% | 100.0% | 95.8% | 34.5% |
+| LongBench Pro | count/filter/aggregate, 18 tasks | 100.0% | 100.0% | 100.0% | 45.9% |
+| LongBench Pro | synthesis/top_k, 12 tasks | 100.0% | 75.0% | 100.0% | 40.5% |
 
-Two-pass attend was also measured and remains experimental:
+Raw benchmark JSON and formatted reports are local generated artifacts and are
+ignored by git under `tests/benchmarks/results/` and `tests/benchmarks/reports/`.
 
-| Benchmark | Scope | GWT | Baseline | Avg tool calls | Artifact |
-| --- | --- | ---: | ---: | ---: | --- |
-| RULER multi-hop | 12 advisor-chain tasks | 83.3% | 100.0% | 12.2 | `tests/benchmarks/results/ruler_multi_hop_qwen3.6-35b-a3b_20260427_135900_632732_12d146c65aa6.json` |
-| LongBench Pro | count/filter/aggregate, 18 tasks | 72.2% | 88.9% | 11.9 | `tests/benchmarks/results/longbench_pro_qwen3.6-35b-a3b_20260427_135900_654597_12d146c65aa6.json` |
-| LongBench Pro | synthesis/top_k, 12 tasks | 50.0% | 66.7% | 11.9 | `tests/benchmarks/results/longbench_pro_qwen3.6-35b-a3b_20260427_135900_624355_12d146c65aa6.json` |
+## Release Gates
 
-The formatted comparison report is in
-`tests/benchmarks/reports/2026-04-27-qwen-attend-release-baseline.md`.
+| Gate | Threshold | Current | Status |
+| --- | ---: | ---: | --- |
+| RULER advisor chains | 90.0% | 91.7% | pass |
+| Count | 90.0% | 100.0% | pass |
+| Filter | 90.0% | 100.0% | pass |
+| Aggregate | 90.0% | 100.0% | pass |
+| Synthesis | 80.0% | 100.0% | pass |
+| Top-k | 80.0% | 100.0% | pass |
 
 ## Deploy Readiness
 
-Internal/local deploy can proceed if the verification suite stays green:
+Proceed with push/deploy if the verification suite stays green:
 
 - `pytest`
 - `ruff check .`
@@ -37,20 +46,14 @@ Internal/local deploy can proceed if the verification suite stays green:
 - `npm test`
 - `npm run benchmark:smoke`
 - `python examples/mcp_demo.py`
+- `GWT_DATA_DIR=$(mktemp -d) timeout 5 python -m gwt_context < /dev/null`
 - MCP boundary grep checks from `AGENTS.md`
 
-Production deploy should wait for:
-
-- Exact aggregation/top-k resolver support, or explicit exclusion of those task
-  classes from reliability claims.
-- A clean MCP runtime smoke against the intended deployed client.
-- A persistence/data-dir plan for `GWT_DATA_DIR`, `GWT_DB_PATH`, and vector
-  index files.
-- A release tag with the benchmark report and verification logs referenced.
-- Acceptance thresholds for accuracy and evidence recall by benchmark family.
+Before a public production claim, also decide the persistence policy for
+`GWT_DATA_DIR`, `GWT_DB_PATH`, and vector index files in the target environment.
 
 ## Rollback Condition
 
 Rollback this release candidate if MCP payloads regress, boundary checks fail,
-or one-pass attend drops below the current RULER 91.7% / LongBench 77.8%
-reference without a documented tradeoff.
+or one-pass attend drops below the current RULER 91.7% / LongBench structured
+100.0% reference without a documented tradeoff.

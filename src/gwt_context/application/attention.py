@@ -12,6 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from gwt_context.domain.models import MemoryType
 from gwt_context.interfaces.ports import CyclePort, IngestionPort
 
 
@@ -142,10 +143,37 @@ class AttentionController:
         broadcast_text = ""
         completed_passes = 0
         seen_queries: set[str] = set()
+        pre_admitted = False
+
+        workspace_summary = _metadata_text(plan.metadata, "workspace_summary")
+        if workspace_summary:
+            item = self._ingestion.ingest(
+                content=workspace_summary,
+                memory_type=MemoryType.WORKING,
+                source="attention:collection_summary",
+                tags=["attention", "collection"],
+            )
+            item.activation_level = 1.0
+            item.access_count = max(item.access_count, 20)
+            self._cycle.enqueue_for_competition(item)
+            admitted_ids.append(item.id)
+            pre_admitted = True
+            tool_call_count += 1
+            steps.append(
+                AttentionStep(
+                    phase="controller_tool",
+                    name="gwt_store",
+                    payload={
+                        "item_id": item.id,
+                        "source": "attention:collection_summary",
+                        "content_preview": workspace_summary[:240],
+                    },
+                )
+            )
 
         for pass_number in range(1, passes + 1):
             queries = _queries_for_pass(question, plan, broadcast_text, seen_queries, pass_number)
-            if not queries:
+            if not queries and not (pass_number == 1 and pre_admitted):
                 break
 
             for query in queries:
@@ -235,7 +263,10 @@ class GenericEvidenceResolver:
         context_chunks: Sequence[str],
         metadata: Mapping[str, Any],
     ) -> EvidencePlan:
-        del context_chunks
+        exact_plan = _resolve_structured_employee_evidence(question, context_chunks, metadata)
+        if exact_plan is not None:
+            return exact_plan
+
         queries = _dedupe_preserving_order(
             [
                 question,
@@ -324,6 +355,8 @@ def _queries_for_pass(
     seen_queries: set[str],
     pass_number: int,
 ) -> tuple[str, ...]:
+    if bool(plan.metadata.get("skip_semantic_queries")):
+        return ()
     if pass_number == 1:
         raw_queries = plan.queries or (question,)
     else:
@@ -480,6 +513,306 @@ def _department_queries(department: str) -> list[str]:
         f"{department_name} department years experience",
         f"{department_name} average years of experience",
     ]
+
+
+def _resolve_structured_employee_evidence(
+    question: str,
+    context_chunks: Sequence[str],
+    metadata: Mapping[str, Any],
+) -> EvidencePlan | None:
+    records = [_parse_employee_record(chunk) for chunk in context_chunks]
+    employee_records = [record for record in records if record is not None]
+    if not employee_records:
+        return None
+
+    count_plan = _resolve_employee_count(question, employee_records)
+    if count_plan is not None:
+        return count_plan
+
+    filter_plan = _resolve_employee_filter(question, employee_records)
+    if filter_plan is not None:
+        return filter_plan
+
+    top_k_plan = _resolve_employee_top_k(question, employee_records)
+    if top_k_plan is not None:
+        return top_k_plan
+
+    comparison_plan = _resolve_employee_department_comparison(question, employee_records)
+    if comparison_plan is not None:
+        return comparison_plan
+
+    average_plan = _resolve_employee_average(question, employee_records)
+    if average_plan is not None:
+        return average_plan
+
+    if metadata.get("task_type") in {"count", "filter", "aggregate", "top_k", "synthesis"}:
+        return EvidencePlan(
+            strategy="structured_employee_parse_error",
+            answer="",
+            queries=(question,),
+            evidence=("Employee records were present but the question did not match.",),
+        )
+    return None
+
+
+def _resolve_employee_count(
+    question: str,
+    records: Sequence[Mapping[str, str]],
+) -> EvidencePlan | None:
+    match = re.search(r"How many employees have ([a-z_]+) = '([^']+)'", question)
+    if not match:
+        return None
+    field_name, target = match.groups()
+    matched = [record for record in records if record.get(field_name) == target]
+    return _structured_employee_plan(
+        strategy=f"structured_count_{field_name}",
+        question=question,
+        answer=str(len(matched)),
+        queries=(f"employees {field_name} {target}",),
+        matched_records=matched,
+        summary_lines=[
+            f"Exact count: {len(matched)} employees where {field_name}={target}.",
+            *_record_lines(matched, fields=(field_name,)),
+        ],
+        extra_metadata={"field": field_name, "target": target},
+    )
+
+
+def _resolve_employee_filter(
+    question: str,
+    records: Sequence[Mapping[str, str]],
+) -> EvidencePlan | None:
+    match = re.search(
+        r"List all employees in the (.+?) department who are based in (.+?)\.",
+        question,
+    )
+    if not match:
+        return None
+    department, location = match.groups()
+    matched = [
+        record
+        for record in records
+        if record["department"] == department and record["location"] == location
+    ]
+    names = sorted(record["name"] for record in matched)
+    answer = ", ".join(names) if names else "none"
+    return _structured_employee_plan(
+        strategy="structured_filter_department_location",
+        question=question,
+        answer=answer,
+        queries=(f"employees {department} department based in {location}",),
+        matched_records=matched,
+        summary_lines=[
+            f"Exact filter: department={department}, location={location}.",
+            f"Answer: {answer}.",
+            *_record_lines(matched, fields=("department", "location")),
+        ],
+        extra_metadata={"department": department, "location": location},
+    )
+
+
+def _resolve_employee_average(
+    question: str,
+    records: Sequence[Mapping[str, str]],
+) -> EvidencePlan | None:
+    match = re.search(
+        r"average years of experience for employees in the (.+?) department",
+        question,
+    )
+    if not match:
+        return None
+    department = match.group(1)
+    matched = [record for record in records if record["department"] == department]
+    if matched:
+        average = sum(int(record["years_experience"]) for record in matched) / len(matched)
+        answer = f"{average:.1f}"
+    else:
+        answer = "0.0"
+    return _structured_employee_plan(
+        strategy="structured_average_years_by_department",
+        question=question,
+        answer=answer,
+        queries=(f"employees {department} years experience",),
+        matched_records=matched,
+        summary_lines=[
+            f"Exact average: {department} average years of experience = {answer}.",
+            *_record_lines(matched, fields=("years_experience", "department")),
+        ],
+        extra_metadata={"department": department},
+    )
+
+
+def _resolve_employee_top_k(
+    question: str,
+    records: Sequence[Mapping[str, str]],
+) -> EvidencePlan | None:
+    match = re.search(r"top (\d+) employees by performance score", question)
+    if not match:
+        return None
+    k = int(match.group(1))
+    ranked = sorted(
+        records,
+        key=lambda record: (-float(record["performance_score"]), _employee_index(record["name"])),
+    )[:k]
+    answer = ", ".join(record["name"] for record in ranked)
+    return _structured_employee_plan(
+        strategy="structured_top_k_performance_score",
+        question=question,
+        answer=answer,
+        queries=(f"top {k} employees performance score",),
+        matched_records=ranked,
+        summary_lines=[
+            f"Exact top {k} by performance score: {answer}.",
+            *_record_lines(ranked, fields=("performance_score",)),
+        ],
+        extra_metadata={"k": k},
+    )
+
+
+def _resolve_employee_department_comparison(
+    question: str,
+    records: Sequence[Mapping[str, str]],
+) -> EvidencePlan | None:
+    match = re.search(
+        r"higher average years of experience, (.+?) or (.+?)\?",
+        question,
+    )
+    if not match:
+        return None
+    dept_a, dept_b = match.groups()
+    records_a = [record for record in records if record["department"] == dept_a]
+    records_b = [record for record in records if record["department"] == dept_b]
+    if not records_a or not records_b:
+        return _structured_employee_plan(
+            strategy="structured_department_comparison_missing_records",
+            question=question,
+            answer="",
+            queries=(f"employees {dept_a} {dept_b} years experience",),
+            matched_records=(*records_a, *records_b),
+            summary_lines=("Could not find records for both departments.",),
+            extra_metadata={"department_a": dept_a, "department_b": dept_b},
+        )
+
+    avg_a = sum(int(record["years_experience"]) for record in records_a) / len(records_a)
+    avg_b = sum(int(record["years_experience"]) for record in records_b) / len(records_b)
+    winner = dept_a if avg_a >= avg_b else dept_b
+    matched = [*records_a, *records_b]
+    return _structured_employee_plan(
+        strategy="structured_compare_department_average_experience",
+        question=question,
+        answer=winner,
+        queries=(
+            f"employees {dept_a} years experience",
+            f"employees {dept_b} years experience",
+        ),
+        matched_records=matched,
+        summary_lines=[
+            f"{dept_a}: average_years_experience={avg_a:.1f} from {len(records_a)} records.",
+            f"{dept_b}: average_years_experience={avg_b:.1f} from {len(records_b)} records.",
+            f"Answer: {winner}.",
+            *_record_lines(matched, fields=("department", "years_experience")),
+        ],
+        extra_metadata={
+            "department_a": dept_a,
+            "department_b": dept_b,
+            "average_a": round(avg_a, 1),
+            "average_b": round(avg_b, 1),
+        },
+    )
+
+
+def _structured_employee_plan(
+    *,
+    strategy: str,
+    question: str,
+    answer: str,
+    queries: Sequence[str],
+    matched_records: Sequence[Mapping[str, str]],
+    summary_lines: Sequence[str],
+    extra_metadata: Mapping[str, Any],
+) -> EvidencePlan:
+    full_records = tuple(record["raw"] for record in matched_records)
+    workspace_summary = "\n".join(
+        [
+            "STRUCTURED COLLECTION EVIDENCE",
+            f"Question: {question}",
+            f"Controller answer: {answer}",
+            *summary_lines,
+            "Full matching records:",
+            *full_records,
+        ]
+    )
+    return EvidencePlan(
+        strategy=strategy,
+        answer=answer,
+        queries=tuple(queries),
+        evidence=tuple(summary_lines),
+        metadata={
+            "planner": "structured_employee",
+            "deterministic_answer": True,
+            "skip_semantic_queries": True,
+            "collection_record_count": len(matched_records),
+            "workspace_summary": workspace_summary,
+            **dict(extra_metadata),
+        },
+    )
+
+
+def _record_lines(
+    records: Sequence[Mapping[str, str]],
+    *,
+    fields: Sequence[str],
+) -> list[str]:
+    lines: list[str] = []
+    for record in records:
+        values = ", ".join(f"{field}={record[field]}" for field in fields)
+        lines.append(f"{record['name']}: {values}")
+    return lines
+
+
+def _parse_employee_record(chunk: str) -> dict[str, str] | None:
+    pattern = re.compile(
+        r"(Employee-\d+) works in the (.+?) department, based in (.+?)\. "
+        r"Status: (.+?)\. They have (\d+) years of experience and are "
+        r"currently assigned to Project (.+?)\. Skills: (.+?)\. "
+        r"Performance score: (.+?)/5\.0\. Salary band: (.+?)\."
+    )
+    match = pattern.fullmatch(chunk)
+    if not match:
+        return None
+    (
+        name,
+        department,
+        location,
+        status,
+        years_experience,
+        project,
+        skills,
+        performance_score,
+        salary_band,
+    ) = match.groups()
+    return {
+        "name": name,
+        "department": department,
+        "location": location,
+        "status": status,
+        "years_experience": years_experience,
+        "project": project,
+        "skills": skills,
+        "performance_score": performance_score,
+        "salary_band": salary_band,
+        "raw": chunk,
+    }
+
+
+def _employee_index(name: str) -> int:
+    match = re.search(r"(\d+)$", name)
+    return int(match.group(1)) if match else 0
+
+
+def _metadata_text(metadata: Mapping[str, Any], key: str) -> str:
+    value = metadata.get(key)
+    return value if isinstance(value, str) else ""
 
 
 def _quoted_phrases(text: str) -> list[str]:

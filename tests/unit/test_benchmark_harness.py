@@ -15,6 +15,7 @@ from tests.benchmarks.harness import (
     _build_openai_client,
     _format_hybrid_prompt,
     run_benchmark,
+    run_task_gwt_attend,
 )
 
 
@@ -446,6 +447,62 @@ def test_run_benchmark_uses_attend_mode(monkeypatch, tmp_path: Path) -> None:
     assert captured["task_id"] == "t1"
     assert report.gwt_mode == "attend"
     assert report.gwt_results[0].tool_calls == 4
+
+
+def test_attend_mode_returns_deterministic_structured_answer_without_model() -> None:
+    class FakeEmbedder:
+        dim = 384
+
+        def embed(self, text: str) -> list[float]:
+            value = float(len(text) % 7)
+            return [value, *([0.0] * 383)]
+
+    class FailingClient:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(*_args: object, **_kwargs: object) -> object:
+                    raise AssertionError("model should not be called for deterministic evidence")
+
+    task = BenchmarkTask(
+        id="lbp_topk_2rec_0",
+        question=(
+            "Who are the top 2 employees by performance score? List their names in order "
+            "from highest to lowest, separated by commas."
+        ),
+        context_chunks=[
+            (
+                "Employee-001 works in the Engineering department, based in Berlin. "
+                "Status: active. They have 4 years of experience and are currently "
+                "assigned to Project Atlas. Skills: Python. Performance score: "
+                "3.5/5.0. Salary band: L4."
+            ),
+            (
+                "Employee-002 works in the Sales department, based in Tokyo. Status: active. "
+                "They have 7 years of experience and are currently assigned to Project Beacon. "
+                "Skills: SQL. Performance score: 4.9/5.0. Salary band: L5."
+            ),
+            (
+                "Employee-003 works in the Research department, based in Dublin. "
+                "Status: active. They have 9 years of experience and are currently "
+                "assigned to Project Matrix. Skills: NLP. Performance score: "
+                "4.4/5.0. Salary band: L6."
+            ),
+        ],
+        expected_answer="Employee-002, Employee-003",
+    )
+
+    result = run_task_gwt_attend(
+        FailingClient(),  # type: ignore[arg-type]
+        "model-x",
+        task,
+        FakeEmbedder(),  # type: ignore[arg-type]
+    )
+
+    assert result.correct is True
+    assert result.predicted_answer == "Employee-002, Employee-003"
+    assert result.total_tokens == 0
+    assert result.trace[-1]["phase"] == "attend_controller_answer"
 
 
 def test_run_benchmark_rejects_misconfigured_api_path() -> None:

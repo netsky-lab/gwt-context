@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 125 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), and `pytest` baseline of 129 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -65,6 +65,8 @@
   - `--gwt-mode attend` is available for model-backed production planner evaluation.
   - Multi-pass attention remains opt-in through `gwt_attend(passes=...)` and
     `BENCHMARK_ATTEND_PASSES` until benchmark evidence justifies a new default.
+  - Structured collection tasks have explicit release gates in benchmark
+    reports for count, filter, aggregate, synthesis, and top-k task families.
 
 ## Medium-term
 

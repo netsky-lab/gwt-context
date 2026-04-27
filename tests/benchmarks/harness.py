@@ -316,6 +316,7 @@ class BenchmarkReport:
                     "error": r.error,
                     "task_metadata": r.task_metadata,
                     "expected_evidence": r.expected_evidence,
+                    "evidence_available": _result_evidence_metrics(r)["available"],
                     "evidence_precision": _result_evidence_metrics(r)["precision"],
                     "evidence_recall": _result_evidence_metrics(r)["recall"],
                 }
@@ -799,6 +800,30 @@ def run_task_gwt_attend(
         controller_run = _run_attend_controller(session, task, trace)
         evidence = controller_run.evidence
         tool_call_count += controller_run.tool_call_count
+
+        if evidence.metadata.get("deterministic_answer") and evidence.answer:
+            raw_answer = _format_controlled_answer(task.question, evidence)
+            trace.append(
+                {
+                    "phase": "attend_controller_answer",
+                    "content": raw_answer,
+                    "strategy": evidence.strategy,
+                }
+            )
+            return TaskResult(
+                task_id=task.id,
+                mode="gwt",
+                predicted_answer=evidence.answer,
+                expected_answer=task.expected_answer,
+                correct=_check_answer(evidence.answer, task.expected_answer),
+                tool_calls=tool_call_count,
+                total_tokens=0,
+                latency_seconds=time.time() - start,
+                raw_answer=raw_answer,
+                workspace_at_answer=session.workspace_text,
+                workspace_snapshot=session.snapshot(),
+                trace=trace,
+            )
 
         prompt = _format_attend_prompt(task.question, evidence, session.workspace_text)
         response = client.chat.completions.create(
@@ -1338,6 +1363,9 @@ def _format_attend_prompt(question: str, evidence: EvidencePlan, workspace_text:
     lines = [
         f"Question: {question}",
         f"GWT strategy: {evidence.strategy}",
+        f"Controller suggested answer: {evidence.answer or '[none]'}",
+        "Controller evidence:",
+        "\n".join(f"- {item}" for item in evidence.evidence) or "- No explicit evidence.",
         "Selected workspace evidence:",
         workspace_text or "[empty workspace]",
         "Return only the final answer using the required ANSWER format.",

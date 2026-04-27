@@ -185,3 +185,80 @@ def test_generic_evidence_resolver_plans_field_target_queries() -> None:
 
     assert "employees status on_leave" in plan.queries
     assert "Status: on_leave" in plan.queries
+
+
+def test_generic_evidence_resolver_returns_exact_employee_top_k_plan() -> None:
+    records = [
+        _employee_record("Employee-002", score="4.9"),
+        _employee_record("Employee-001", score="4.9"),
+        _employee_record("Employee-003", score="4.4"),
+    ]
+
+    plan = GenericEvidenceResolver().resolve(
+        "Who are the top 2 employees by performance score? List their names in order "
+        "from highest to lowest, separated by commas.",
+        records,
+        {},
+    )
+
+    assert plan.strategy == "structured_top_k_performance_score"
+    assert plan.answer == "Employee-001, Employee-002"
+    assert plan.metadata["deterministic_answer"] is True
+    assert "workspace_summary" in plan.metadata
+
+
+def test_attention_controller_admits_compressed_collection_evidence() -> None:
+    cycle = Mock()
+    cycle.set_goal = Mock(return_value=Goal(id="goal-1", description="Q"))
+    cycle.enqueue_for_competition = Mock()
+    cycle.run = Mock(
+        return_value=SimpleNamespace(
+            id="broadcast-1",
+            formatted_content="collection summary",
+            admitted_ids=["summary-1"],
+            evicted_ids=[],
+        )
+    )
+    summary_item = MemoryItem(id="summary-1", content="summary")
+    ingestion = Mock()
+    ingestion.ingest = Mock(return_value=summary_item)
+    ingestion.query_similar = Mock(return_value=[])
+    records = [
+        _employee_record("Employee-001", department="Research", years="5"),
+        _employee_record("Employee-002", department="Research", years="15"),
+    ]
+
+    result = AttentionController(
+        cycle,
+        ingestion,
+        [GenericEvidenceResolver()],
+    ).run(
+        "What is the average years of experience for employees in the Research "
+        "department? Round to one decimal place.",
+        records,
+    )
+
+    assert result.evidence.answer == "10.0"
+    ingestion.ingest.assert_called_once()
+    ingestion.query_similar.assert_not_called()
+    cycle.enqueue_for_competition.assert_called_once_with(summary_item)
+    cycle.run.assert_called_once()
+    assert result.tool_call_count == 3
+
+
+def _employee_record(
+    name: str,
+    *,
+    department: str = "Engineering",
+    location: str = "Berlin",
+    status: str = "active",
+    years: str = "7",
+    project: str = "Atlas",
+    score: str = "3.5",
+) -> str:
+    return (
+        f"{name} works in the {department} department, based in {location}. "
+        f"Status: {status}. They have {years} years of experience and are currently "
+        f"assigned to Project {project}. Skills: Python. Performance score: "
+        f"{score}/5.0. Salary band: L4."
+    )
