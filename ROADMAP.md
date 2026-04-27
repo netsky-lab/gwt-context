@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), and `pytest` baseline of 157 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), and `pytest` baseline of 161 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -12,6 +12,9 @@
 - CI covers `pytest`, `ruff`, `mypy`, `npm test`, and package build.
 - MCP response contracts are documented in `docs/mcp-tool-contracts.md` and
   guarded by snapshot-style unit tests.
+- `gwt_attend` includes a post-broadcast subscriber bus so broadcast is an
+  event consumed by independent proposal-generating processors, not only text
+  returned to one downstream model call.
 - Task onboarding constraint is required in both `AGENTS.md` and task planning:
   - read `ARCHITECTURE.md` first,
   - record in/out boundaries, forbidden imports, and forbidden coupling checks,
@@ -74,6 +77,8 @@
     and trace explanation.
   - Local readiness smoke covers server creation, store, graph resolve, attend,
     trace explanation, and stats without external embedding downloads.
+  - Attention traces include post-broadcast subscriber proposals and accepted
+    downstream actions.
   - Multi-pass attention remains opt-in through `gwt_attend(passes=...)` and
     `BENCHMARK_ATTEND_PASSES` until benchmark evidence justifies a new default.
   - Structured collection tasks have explicit release gates in benchmark

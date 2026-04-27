@@ -13,6 +13,7 @@
   - `competition.py`: `CompetitionEngine` and result contracts.
   - `broadcast.py`: `BroadcastAssembler`.
 - `src/gwt_context/application/`
+  - `broadcast_bus.py`: post-broadcast subscriber bus, proposals, and arbitration.
   - `attention.py`: reusable attention controller for goal setting, evidence planning, query admission, and broadcast.
   - `structured.py`: runtime record extraction, exact collection evidence, and relation graph resolution.
   - `ingestion.py`: `IngestionPipeline` (content -> embedding -> persistence/index).
@@ -82,6 +83,14 @@
 - `GenericEvidenceResolver` supports semantic, structured collection, relation graph, hybrid, and auto planning without importing benchmark adapters.
 - Runtime collection/relation extraction lives in `application/structured.py` and has no MCP or infrastructure dependency.
 - The controller sets the active goal, runs resolver-selected queries, admits query matches into competition, then executes one broadcast cycle.
+- After each broadcast, `BroadcastBus` fans out the globally available
+  broadcast to independent subscribers. Subscribers return proposals such as
+  exact resolution, semantic recall, relation continuation, contradiction
+  flags, or follow-up requests.
+- Broadcast subscribers do not mutate workspace directly. The bus arbitrates
+  proposals and the controller applies accepted side effects through public
+  application ports, such as `IngestionPort.query_similar` plus
+  `CyclePort.enqueue_for_competition`.
 - Benchmark resolvers are adapters under `tests/benchmarks/controlled_rules.py`; production MCP handlers do not import benchmark code.
 
 ### 3) Explicit key data path

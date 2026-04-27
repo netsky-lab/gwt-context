@@ -10,6 +10,9 @@ OpenAI-compatible benchmark evaluation.
   `gwt-context-smoke`.
 - Runtime tools for store/query/broadcast, explicit attend, exact resolve,
   collection query, relation graph paths, trace explanation, link/evict/inspect.
+- Post-broadcast subscriber bus for independent structured resolve, semantic
+  recall, relation continuation, contradiction checking, and plan critique
+  proposals.
 - Deterministic hash embeddings for local smoke and CI without downloading a
   sentence-transformer model.
 - Qwen/OpenAI-compatible benchmark entrypoints for RULER and LongBench Pro.

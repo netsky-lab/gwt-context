@@ -25,6 +25,12 @@ The architecture now separates concerns:
   continuation when context chunks are available.
 - `gwt_attend` supports bounded multi-pass attention through `passes`, plus
   `k`, `planner`, and `admit` parameters. The runtime default remains one pass.
+- A post-broadcast bus now treats each workspace broadcast as a shared event
+  read by independent subscribers: structured resolver, semantic recall,
+  relation continuation, contradiction checker, and plan critic.
+- Subscribers return proposals rather than mutating state directly. Accepted
+  proposals are arbitrated and applied through public application ports, then
+  recorded in the attention trace.
 - `gwt_resolve`, `gwt_collection_query`, and `gwt_trace_explain` expose exact
   agent-facing resolution paths without forcing a broadcast.
 - The latest `gwt_attend` run is observable through `gwt://attention/last`.
@@ -43,6 +49,8 @@ The architecture now separates concerns:
 - Exact counting, sorting, aggregation, and relation continuation should use
   structured/graph evidence and compressed workspace summaries rather than
   semantic retrieval alone.
+- Broadcast quality is now measurable beyond retrieval: traces show subscriber
+  proposals and which downstream actions were accepted after conscious access.
 - Two-pass attend is experimental. On the 2026-04-27 Qwen refresh it increased
   tool calls and did not improve the broad matrix, so benchmark default stays
   at one pass unless `BENCHMARK_ATTEND_PASSES` is set.

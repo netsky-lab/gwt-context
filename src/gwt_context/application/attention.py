@@ -12,6 +12,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from gwt_context.application.broadcast_bus import (
+    BroadcastBus,
+    BroadcastContext,
+    broadcast_bus_result_to_dict,
+)
 from gwt_context.application.structured import (
     CollectionEvidence,
     collection_evidence_to_dict,
@@ -100,12 +105,14 @@ class AttentionController:
         *,
         query_k: int = 10,
         admit_query_results: bool = True,
+        broadcast_bus: BroadcastBus | None = None,
     ) -> None:
         self._cycle = cycle
         self._ingestion = ingestion
         self._resolvers = tuple(resolvers)
         self._query_k = query_k
         self._admit_query_results = admit_query_results
+        self._broadcast_bus = broadcast_bus
 
     def run(
         self,
@@ -224,6 +231,55 @@ class AttentionController:
                     },
                 )
             )
+            if self._broadcast_bus is not None:
+                bus_result = self._broadcast_bus.publish(
+                    BroadcastContext(
+                        question=question,
+                        broadcast_id=str(record.id),
+                        broadcast_text=broadcast_text,
+                        pass_number=pass_number,
+                        evidence_plan=plan,
+                        context_chunks=tuple(context_chunks),
+                        metadata=task_metadata,
+                    )
+                )
+                steps.append(
+                    AttentionStep(
+                        phase="broadcast_bus",
+                        name="broadcast_subscribers",
+                        payload=broadcast_bus_result_to_dict(bus_result),
+                    )
+                )
+                for proposal in bus_result.accepted:
+                    if proposal.kind != "query_memory":
+                        continue
+                    query = _metadata_text(proposal.payload, "query")
+                    if not query or query.lower() in seen_queries:
+                        continue
+                    seen_queries.add(query.lower())
+                    items = self._ingestion.query_similar(query=query, k=self._query_k)
+                    tool_call_count += 1
+                    query_ids = []
+                    for item in items:
+                        query_ids.append(item.id)
+                        if self._admit_query_results:
+                            self._cycle.enqueue_for_competition(item)
+                            admitted_ids.append(item.id)
+                    steps.append(
+                        AttentionStep(
+                            phase="broadcast_bus_tool",
+                            name="subscriber_query",
+                            payload={
+                                "pass": pass_number,
+                                "subscriber": proposal.subscriber,
+                                "query": query,
+                                "matched_ids": query_ids,
+                                "admitted_ids": list(query_ids)
+                                if self._admit_query_results
+                                else [],
+                            },
+                        )
+                    )
 
         return AttentionRun(
             evidence=plan,

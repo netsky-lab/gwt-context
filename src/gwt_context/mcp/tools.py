@@ -17,6 +17,7 @@ from gwt_context.application.attention import (
     evidence_plan_to_dict,
     supported_planners,
 )
+from gwt_context.application.broadcast_bus import create_default_broadcast_bus
 from gwt_context.application.structured import RuntimeMemoryIndex, StructuredRecord
 from gwt_context.domain.models import MemoryType
 from gwt_context.interfaces.ports import CyclePort, IngestionPort
@@ -238,6 +239,7 @@ def register_tools(
             resolvers=[GenericEvidenceResolver(planner=normalized_planner)],
             query_k=k,
             admit_query_results=admit,
+            broadcast_bus=create_default_broadcast_bus(),
         )
         run = controller.run(
             question=question,

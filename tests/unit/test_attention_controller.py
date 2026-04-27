@@ -10,6 +10,7 @@ from gwt_context.application.attention import (
     EvidencePlan,
     GenericEvidenceResolver,
 )
+from gwt_context.application.broadcast_bus import BroadcastBus, BroadcastProposal
 from gwt_context.domain.models import Goal, MemoryItem
 
 
@@ -277,6 +278,55 @@ def test_attention_controller_admits_compressed_collection_evidence() -> None:
     cycle.enqueue_for_competition.assert_called_once_with(summary_item)
     cycle.run.assert_called_once()
     assert result.tool_call_count == 3
+
+
+def test_attention_controller_runs_broadcast_subscribers_after_broadcast() -> None:
+    cycle = Mock()
+    cycle.set_goal = Mock(return_value=Goal(id="goal-1", description="Q"))
+    cycle.enqueue_for_competition = Mock()
+    cycle.run = Mock(
+        return_value=SimpleNamespace(
+            id="broadcast-1",
+            formatted_content="Paper Alpha --cites--> Paper Beta",
+            admitted_ids=["item-1"],
+            evicted_ids=[],
+        )
+    )
+    item = MemoryItem(id="item-2", content="Paper Beta -> cites -> Paper Gamma")
+    ingestion = Mock()
+
+    def query_similar(*, query: str, k: int):  # type: ignore[no-untyped-def]
+        if query == "Paper Beta cites":
+            return [item]
+        return []
+
+    ingestion.query_similar = Mock(side_effect=query_similar)
+
+    class QuerySubscriber:
+        name = "query"
+
+        def propose(self, _context):  # type: ignore[no-untyped-def]
+            return (
+                BroadcastProposal(
+                    subscriber=self.name,
+                    kind="query_memory",
+                    priority=0.9,
+                    rationale="continue chain",
+                    payload={"query": "Paper Beta cites"},
+                ),
+            )
+
+    result = AttentionController(
+        cycle,
+        ingestion,
+        [GenericEvidenceResolver(planner="semantic")],
+        broadcast_bus=BroadcastBus([QuerySubscriber()]),
+    ).run("What does Paper Alpha cite cite?", passes=1)
+
+    ingestion.query_similar.assert_any_call(query="Paper Beta cites", k=10)
+    cycle.enqueue_for_competition.assert_called_once_with(item)
+    assert "broadcast_subscribers" in [step.name for step in result.steps]
+    assert "subscriber_query" in [step.name for step in result.steps]
 
 
 def _employee_record(

@@ -2,6 +2,7 @@
 
 ## 2026-04-27
 
+- Added an application-level post-broadcast subscriber bus with structured resolve, semantic recall, relation continuation, contradiction checking, plan critique proposals, arbitration, and attention trace integration.
 - Bumped package metadata to `0.2.0`, added CI, release-readiness documentation, MCP tool contract snapshots, and an 11-task bounded Qwen attend evaluation summary.
 - Added deterministic hash embeddings for offline startup, a `gwt_context.smoke` readiness workflow, config env parity tests, MCP input validation, natural-language relation graph edges, and bounded Qwen smoke verification.
 - Added generic runtime record extraction, first-class collection evidence, relation graph resolution, planner modes, runtime indexing, agent-facing MCP resolve/query/trace tools, and real workload eval coverage.
