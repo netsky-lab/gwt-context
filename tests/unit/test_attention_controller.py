@@ -207,6 +207,39 @@ def test_generic_evidence_resolver_returns_exact_employee_top_k_plan() -> None:
     assert "workspace_summary" in plan.metadata
 
 
+def test_generic_evidence_resolver_respects_semantic_planner_mode() -> None:
+    records = [
+        _employee_record("Employee-002", score="4.9"),
+        _employee_record("Employee-001", score="4.9"),
+    ]
+
+    plan = GenericEvidenceResolver(planner="semantic").resolve(
+        "Who are the top 2 employees by performance score?",
+        records,
+        {},
+    )
+
+    assert plan.strategy == "generic_semantic_query_planner"
+    assert plan.answer == ""
+    assert plan.metadata["planner"] == "semantic"
+
+
+def test_generic_evidence_resolver_returns_relation_graph_plan() -> None:
+    plan = GenericEvidenceResolver(planner="graph").resolve(
+        "Who was Ada Lovelace's doctoral advisor's doctoral advisor?",
+        [
+            "Ada Lovelace's doctoral advisor was Grace Hopper at MIT",
+            "Grace Hopper's doctoral advisor was Alan Turing at Cambridge",
+        ],
+        {},
+    )
+
+    assert plan.strategy == "relation_graph_doctoral_advisor"
+    assert plan.answer == "Alan Turing"
+    assert plan.metadata["deterministic_answer"] is True
+    assert plan.metadata["hops"] == 2
+
+
 def test_attention_controller_admits_compressed_collection_evidence() -> None:
     cycle = Mock()
     cycle.set_goal = Mock(return_value=Goal(id="goal-1", description="Q"))

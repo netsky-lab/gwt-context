@@ -63,6 +63,10 @@
   - `gwt_query(admit=true)` is covered by boundary and integration tests.
   - Deterministic benchmark smoke runs without external model/API calls.
   - `--gwt-mode attend` is available for model-backed production planner evaluation.
+  - Runtime planner modes are exposed as `auto`, `semantic`, `structured`,
+    `graph`, and `hybrid`.
+  - Agent-facing exact-resolution tools cover direct resolve, collection query,
+    and trace explanation.
   - Multi-pass attention remains opt-in through `gwt_attend(passes=...)` and
     `BENCHMARK_ATTEND_PASSES` until benchmark evidence justifies a new default.
   - Structured collection tasks have explicit release gates in benchmark

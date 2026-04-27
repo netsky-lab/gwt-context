@@ -1,9 +1,10 @@
 """MCP tool definitions for GWT-Context.
 
-9 tools that form the external API surface for LLM interaction.
+12 tools that form the external API surface for LLM interaction.
 Each tool maps to domain/application operations.
 """
 
+from collections.abc import Sequence
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -14,7 +15,9 @@ from gwt_context.application.attention import (
     GenericEvidenceResolver,
     attention_run_to_dict,
     evidence_plan_to_dict,
+    supported_planners,
 )
+from gwt_context.application.structured import RuntimeMemoryIndex, StructuredRecord
 from gwt_context.domain.models import MemoryType
 from gwt_context.interfaces.ports import CyclePort, IngestionPort
 
@@ -26,6 +29,7 @@ def register_tools(
     attention_trace: AttentionTraceStore | None = None,
 ) -> None:
     """Register all GWT tools on the MCP server."""
+    runtime_index = RuntimeMemoryIndex()
 
     @mcp.tool()
     def gwt_store(
@@ -59,6 +63,7 @@ def register_tools(
         )
 
         cycle.enqueue_for_competition(item)
+        runtime_index.add(item.content or content)
 
         return {
             "id": item.id,
@@ -184,7 +189,7 @@ def register_tools(
         keywords: list[str] | None = None,
         k: int = 5,
         passes: int = 1,
-        planner: str = "generic",
+        planner: str = "auto",
         admit: bool = True,
     ) -> dict[str, Any]:
         """Run explicit attention passes for the current question.
@@ -198,33 +203,48 @@ def register_tools(
             keywords: Optional goal keywords. If omitted, keywords are inferred.
             k: Number of semantic matches to admit per planned query.
             passes: Maximum attention/broadcast passes to run.
-            planner: Evidence planner name. Currently only "generic" is supported.
+            planner: Evidence planner name: auto, semantic, structured, graph, or hybrid.
             admit: Whether query matches should be admitted into competition.
         """
-        if planner != "generic":
+        normalized_planner = _normalize_supported_planner(planner)
+        if normalized_planner is None:
             return {
                 "error": f"unsupported planner: {planner}",
-                "supported_planners": ["generic"],
+                "supported_planners": list(supported_planners()),
             }
         if passes < 1:
             return {"error": "passes must be >= 1"}
         if k < 1:
             return {"error": "k must be >= 1"}
 
+        context_chunks = _context_chunks_for_question(
+            question=question,
+            k=k,
+            planner=normalized_planner,
+            runtime_index=runtime_index,
+            ingestion=ingestion,
+        )
         controller = AttentionController(
             cycle=cycle,
             ingestion=ingestion,
-            resolvers=[GenericEvidenceResolver()],
+            resolvers=[GenericEvidenceResolver(planner=normalized_planner)],
             query_k=k,
             admit_query_results=admit,
         )
-        run = controller.run(question=question, keywords=keywords, passes=passes)
+        run = controller.run(
+            question=question,
+            context_chunks=context_chunks,
+            keywords=keywords,
+            passes=passes,
+        )
         trace = attention_run_to_dict(question, run)
         if attention_trace is not None:
             trace = attention_trace.record(question, run)
         return {
             "question": question,
-            "planner": planner,
+            "planner": normalized_planner,
+            "supported_planners": list(supported_planners()),
+            "context_count": len(context_chunks),
             "passes_requested": passes,
             "passes_completed": run.pass_count,
             "admit": admit,
@@ -234,6 +254,155 @@ def register_tools(
             "broadcast": run.broadcast_text,
             "workspace": cycle.inspect("workspace"),
             "trace": trace["trace"],
+        }
+
+    @mcp.tool()
+    def gwt_resolve(
+        question: str,
+        planner: str = "auto",
+        k: int = 50,
+    ) -> dict[str, Any]:
+        """Resolve a question against runtime structured memory without broadcasting."""
+        normalized_planner = _normalize_supported_planner(planner)
+        if normalized_planner is None:
+            return {
+                "error": f"unsupported planner: {planner}",
+                "supported_planners": list(supported_planners()),
+            }
+        if k < 1:
+            return {"error": "k must be >= 1"}
+
+        context_chunks = _context_chunks_for_question(
+            question=question,
+            k=k,
+            planner=normalized_planner,
+            runtime_index=runtime_index,
+            ingestion=ingestion,
+        )
+        plan = GenericEvidenceResolver(planner=normalized_planner).resolve(
+            question,
+            context_chunks,
+            {},
+        )
+        return {
+            "question": question,
+            "planner": normalized_planner,
+            "context_count": len(context_chunks),
+            "evidence_plan": evidence_plan_to_dict(plan),
+        }
+
+    @mcp.tool()
+    def gwt_collection_query(
+        operation: str,
+        field: str | None = None,
+        value: str | None = None,
+        metric: str | None = None,
+        k: int = 5,
+        group_field: str | None = None,
+        group_a: str | None = None,
+        group_b: str | None = None,
+    ) -> dict[str, Any]:
+        """Run exact collection operations over runtime structured memory."""
+        collection = runtime_index.collection()
+        normalized_operation = operation.lower().strip()
+        criteria = {field: value} if field and value else {}
+
+        if normalized_operation == "count":
+            records = collection.filter_equals(criteria) if criteria else collection.records
+            return _collection_query_payload(
+                operation="count",
+                answer=str(len(records)),
+                records=records,
+                metadata={"criteria": criteria},
+            )
+
+        if normalized_operation in {"filter", "list", "find"}:
+            if not criteria:
+                return {"error": "filter/list/find require field and value"}
+            records = collection.filter_equals(criteria)
+            answer = ", ".join(record.record_id for record in records) or "none"
+            return _collection_query_payload(
+                operation="filter",
+                answer=answer,
+                records=records,
+                metadata={"criteria": criteria},
+            )
+
+        if normalized_operation == "top_k":
+            if metric is None:
+                return {"error": "top_k requires metric"}
+            records = collection.top_k(metric, k)
+            answer = ", ".join(record.record_id for record in records) or "none"
+            return _collection_query_payload(
+                operation="top_k",
+                answer=answer,
+                records=records,
+                metadata={"metric": metric, "k": k},
+            )
+
+        if normalized_operation == "average":
+            if metric is None:
+                return {"error": "average requires metric"}
+            average, records = collection.average(metric, criteria)
+            answer = f"{average:.1f}" if average is not None else "0.0"
+            return _collection_query_payload(
+                operation="average",
+                answer=answer,
+                records=records,
+                metadata={"metric": metric, "criteria": criteria},
+            )
+
+        if normalized_operation == "compare":
+            if not (group_field and group_a and group_b and metric):
+                return {"error": "compare requires group_field, group_a, group_b, and metric"}
+            average_a, records_a = collection.average(metric, {group_field: group_a})
+            average_b, records_b = collection.average(metric, {group_field: group_b})
+            if average_a is None or average_b is None:
+                return {"error": "not enough numeric records to compare"}
+            winner = group_a if average_a >= average_b else group_b
+            return _collection_query_payload(
+                operation="compare",
+                answer=winner,
+                records=(*records_a, *records_b),
+                metadata={
+                    "group_field": group_field,
+                    "metric": metric,
+                    "group_a": group_a,
+                    "group_b": group_b,
+                    "average_a": average_a,
+                    "average_b": average_b,
+                },
+            )
+
+        return {
+            "error": f"unsupported collection operation: {operation}",
+            "supported_operations": ["count", "filter", "top_k", "average", "compare"],
+        }
+
+    @mcp.tool()
+    def gwt_trace_explain() -> dict[str, Any]:
+        """Explain the most recent explicit attention trace."""
+        if attention_trace is None or attention_trace.get_last() is None:
+            return {"status": "empty", "message": "No attention trace has been recorded."}
+
+        trace = attention_trace.get_last()
+        assert trace is not None
+        evidence = trace["evidence_plan"]
+        phases = [step["name"] for step in trace["trace"]]
+        return {
+            "status": "ok",
+            "question": trace["question"],
+            "planner": evidence["metadata"].get("planner", "unknown"),
+            "strategy": evidence["strategy"],
+            "answer": evidence["answer"],
+            "pass_count": trace["pass_count"],
+            "tool_call_count": trace["tool_call_count"],
+            "phases": phases,
+            "explanation": (
+                "Attention set the goal, resolved an evidence plan, admitted any required "
+                "evidence, then ran broadcast passes."
+            ),
+            "trace": trace,
         }
 
     @mcp.tool()
@@ -273,3 +442,46 @@ def register_tools(
                 - "stats": System statistics
         """
         return cycle.inspect(target=target)
+
+
+def _normalize_supported_planner(planner: str) -> str | None:
+    normalized = planner.lower().strip() or "auto"
+    if normalized in supported_planners():
+        return normalized
+    return None
+
+
+def _context_chunks_for_question(
+    *,
+    question: str,
+    k: int,
+    planner: str,
+    runtime_index: RuntimeMemoryIndex,
+    ingestion: IngestionPort,
+) -> tuple[str, ...]:
+    if planner == "semantic":
+        return ()
+    if not runtime_index.contents():
+        items = ingestion.query_similar(query=question, k=k)
+        runtime_index.extend([item.content for item in items])
+    return runtime_index.contents()
+
+
+def _collection_query_payload(
+    *,
+    operation: str,
+    answer: str,
+    records: Sequence[StructuredRecord],
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "operation": operation,
+        "answer": answer,
+        "matched_count": len(records),
+        "matched_records": [
+            {"id": record.record_id, "fields": dict(record.fields), "raw": record.raw}
+            for record in records
+        ],
+        "supporting_evidence": [record.raw for record in records],
+        "metadata": metadata,
+    }

@@ -8,13 +8,18 @@ from unittest.mock import Mock
 
 from mcp.server.fastmcp import FastMCP
 
+from gwt_context.application.attention import AttentionRun, AttentionTraceStore, EvidencePlan
 from gwt_context.domain.models import ActivationState, CompetitionResult, MemoryItem, MemoryType
 from gwt_context.mcp.tools import register_tools
 
 
-def _register_tool_cycle_handlers(cycle: object, ingestion: object) -> FastMCP:
+def _register_tool_cycle_handlers(
+    cycle: object,
+    ingestion: object,
+    attention_trace: object | None = None,
+) -> FastMCP:
     mcp = FastMCP("gwt-context-test")
-    register_tools(mcp, cycle, ingestion)
+    register_tools(mcp, cycle, ingestion, attention_trace)
     return mcp
 
 
@@ -165,14 +170,14 @@ class TestBoundaryDelegation:
         result = _tool_call(mcp, "gwt_attend")(
             "Find Ada Lovelace's doctoral advisor",
             passes=2,
-            planner="generic",
+            planner="semantic",
             admit=True,
         )
 
         cycle.set_goal.assert_called_once()
         cycle.enqueue_for_competition.assert_called()
         assert cycle.run.call_count == 2
-        assert result["planner"] == "generic"
+        assert result["planner"] == "semantic"
         assert result["passes_completed"] == 2
         assert result["admit"] is True
         assert result["evidence_plan"]["strategy"] == "generic_semantic_query_planner"
@@ -186,3 +191,144 @@ class TestBoundaryDelegation:
         result = _tool_call(mcp, "gwt_attend")("Q", planner="benchmark")
 
         assert result["error"] == "unsupported planner: benchmark"
+
+    def test_gwt_resolve_uses_runtime_structured_memory(self):
+        cycle = Mock()
+        cycle.enqueue_for_competition = Mock()
+        ingestion = Mock()
+        ingestion.ingest = Mock(
+            side_effect=[
+                MemoryItem(
+                    id="idea-1",
+                    content="Idea-001 | type=twitter | topic=GWT | score=9 | status=ready",
+                    memory_type=MemoryType.SEMANTIC,
+                    activation_state=ActivationState.PRECONSCIOUS,
+                ),
+                MemoryItem(
+                    id="idea-2",
+                    content="Idea-002 | type=twitter | topic=memory | score=7 | status=draft",
+                    memory_type=MemoryType.SEMANTIC,
+                    activation_state=ActivationState.PRECONSCIOUS,
+                ),
+            ]
+        )
+        ingestion.query_similar = Mock(return_value=[])
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        gwt_store = _tool_call(mcp, "gwt_store")
+        gwt_store("Idea-001 | type=twitter | topic=GWT | score=9 | status=ready")
+        gwt_store("Idea-002 | type=twitter | topic=memory | score=7 | status=draft")
+
+        result = _tool_call(mcp, "gwt_resolve")(
+            "How many ideas have status = 'ready'?",
+            planner="structured",
+        )
+
+        assert result["planner"] == "structured"
+        assert result["context_count"] == 2
+        assert result["evidence_plan"]["answer"] == "1"
+        assert result["evidence_plan"]["strategy"] == "structured_count_status"
+        ingestion.query_similar.assert_not_called()
+
+    def test_gwt_collection_query_reads_runtime_collection_index(self):
+        cycle = Mock()
+        cycle.enqueue_for_competition = Mock()
+        ingestion = Mock()
+        ingestion.ingest = Mock(
+            side_effect=[
+                MemoryItem(
+                    id="idea-1",
+                    content="Idea-001 | type=twitter | topic=GWT | score=9 | status=ready",
+                    memory_type=MemoryType.SEMANTIC,
+                    activation_state=ActivationState.PRECONSCIOUS,
+                ),
+                MemoryItem(
+                    id="idea-2",
+                    content="Idea-002 | type=twitter | topic=memory | score=7 | status=draft",
+                    memory_type=MemoryType.SEMANTIC,
+                    activation_state=ActivationState.PRECONSCIOUS,
+                ),
+            ]
+        )
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        gwt_store = _tool_call(mcp, "gwt_store")
+        gwt_store("Idea-001 | type=twitter | topic=GWT | score=9 | status=ready")
+        gwt_store("Idea-002 | type=twitter | topic=memory | score=7 | status=draft")
+
+        top = _tool_call(mcp, "gwt_collection_query")(
+            operation="top_k",
+            metric="score",
+            k=1,
+        )
+        average = _tool_call(mcp, "gwt_collection_query")(
+            operation="average",
+            metric="score",
+            field="type",
+            value="twitter",
+        )
+
+        assert top["answer"] == "Idea-001"
+        assert top["matched_count"] == 1
+        assert average["answer"] == "8.0"
+
+    def test_gwt_resolve_uses_runtime_relation_graph(self):
+        cycle = Mock()
+        cycle.enqueue_for_competition = Mock()
+        ingestion = Mock()
+        ingestion.ingest = Mock(
+            side_effect=[
+                MemoryItem(
+                    id="paper-1",
+                    content="Paper Alpha -> cites -> Paper Beta",
+                    memory_type=MemoryType.SEMANTIC,
+                    activation_state=ActivationState.PRECONSCIOUS,
+                ),
+                MemoryItem(
+                    id="paper-2",
+                    content="Paper Beta -> cites -> Paper Gamma",
+                    memory_type=MemoryType.SEMANTIC,
+                    activation_state=ActivationState.PRECONSCIOUS,
+                ),
+            ]
+        )
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        gwt_store = _tool_call(mcp, "gwt_store")
+        gwt_store("Paper Alpha -> cites -> Paper Beta")
+        gwt_store("Paper Beta -> cites -> Paper Gamma")
+
+        result = _tool_call(mcp, "gwt_resolve")(
+            "What does Paper Alpha cite cite?",
+            planner="graph",
+        )
+
+        assert result["evidence_plan"]["strategy"] == "relation_graph_cites"
+        assert result["evidence_plan"]["answer"] == "Paper Gamma"
+
+    def test_gwt_trace_explain_reads_attention_trace_store(self):
+        cycle = Mock()
+        ingestion = Mock()
+        attention_trace = AttentionTraceStore()
+        attention_trace.record(
+            "Find Ada",
+            AttentionRun(
+                evidence=EvidencePlan(
+                    strategy="generic_semantic_query_planner",
+                    answer="",
+                    queries=("Ada",),
+                    metadata={"planner": "semantic"},
+                ),
+                tool_call_count=3,
+                broadcast_text="Ada fact",
+                admitted_ids=("item-1",),
+                steps=(),
+            ),
+        )
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion, attention_trace)
+        result = _tool_call(mcp, "gwt_trace_explain")()
+
+        assert result["status"] == "ok"
+        assert result["planner"] == "semantic"
+        assert result["strategy"] == "generic_semantic_query_planner"

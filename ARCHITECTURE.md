@@ -14,6 +14,7 @@
   - `broadcast.py`: `BroadcastAssembler`.
 - `src/gwt_context/application/`
   - `attention.py`: reusable attention controller for goal setting, evidence planning, query admission, and broadcast.
+  - `structured.py`: runtime record extraction, exact collection evidence, and relation graph resolution.
   - `ingestion.py`: `IngestionPipeline` (content -> embedding -> persistence/index).
   - `goal_manager.py`: goal activation/modulation state.
   - `cycle.py`: `PreconsciousBuffer`, `SelectionBroadcastCycle` orchestration.
@@ -78,6 +79,8 @@
 
 - `AttentionController` lives in `application/attention.py` and depends only on `CyclePort` and `IngestionPort`.
 - Task-specific planners implement the `EvidenceResolver` protocol and return an `EvidencePlan`.
+- `GenericEvidenceResolver` supports semantic, structured collection, relation graph, hybrid, and auto planning without importing benchmark adapters.
+- Runtime collection/relation extraction lives in `application/structured.py` and has no MCP or infrastructure dependency.
 - The controller sets the active goal, runs resolver-selected queries, admits query matches into competition, then executes one broadcast cycle.
 - Benchmark resolvers are adapters under `tests/benchmarks/controlled_rules.py`; production MCP handlers do not import benchmark code.
 
@@ -101,6 +104,7 @@
 - `gwt_query` executes semantic lookup via `IngestionPipeline.query_similar` and returns candidates.
 - `gwt_query(admit=true)` enqueues returned candidates for the next competition round.
 - `gwt_attend` executes the explicit attention-controller path through public application ports.
+- `gwt_resolve`, `gwt_collection_query`, and `gwt_trace_explain` expose agent-facing resolution and trace inspection without reaching into private runtime internals.
 - `gwt://attention/last` exposes the most recent attention trace through an in-memory read model.
 - `gwt_inspect` and MCP resources expose `workspace`, `buffer`, `goals`, and `stats` through cycle/read model paths.
 

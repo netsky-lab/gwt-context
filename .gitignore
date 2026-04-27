@@ -23,6 +23,8 @@ tests/benchmarks/results/
 tests/benchmarks/reports/
 tests/benchmarks/*.log
 tests/benchmarks/.*.log
+.benchmarks/
+.supervisor/
 
 .env
 .env.*

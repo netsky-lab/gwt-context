@@ -99,6 +99,7 @@ def test_mcp_tool_and_resource_smoke(tmp_path: Path) -> None:
         keywords=["Ada", "advisor"],
         k=1,
         passes=2,
+        planner="semantic",
     )
     broadcast = _tool_call(mcp, "gwt_broadcast")()
     stats = _tool_call(mcp, "gwt_inspect")(target="stats")

@@ -59,7 +59,10 @@ python -m gwt_context
 | `gwt_broadcast` | Run selection-broadcast cycle — returns workspace content |
 | `gwt_compete` | Competition round without broadcast (dry-run) |
 | `gwt_query` | Semantic search over long-term memory, optionally admitted to competition |
-| `gwt_attend` | One-call goal-directed attention pass: plan queries, admit matches, broadcast |
+| `gwt_attend` | One-call goal-directed attention pass with semantic, structured, graph, hybrid, or auto planning |
+| `gwt_resolve` | Resolve a question against runtime structured memory without broadcasting |
+| `gwt_collection_query` | Run exact count/filter/top-k/average/compare operations over runtime structured memory |
+| `gwt_trace_explain` | Explain the most recent explicit attention trace |
 | `gwt_evict` | Manual eviction from workspace |
 | `gwt_link` | Bidirectional link between items (enables multi-hop chains) |
 | `gwt_inspect` | Observe workspace, buffer, goals, stats |
@@ -106,11 +109,11 @@ When the goal changes, GoalLinkageSpecialist re-weights all links by relevance t
 
 ### Explicit attention control
 
-`gwt_context.application.attention.AttentionController` provides a reusable path for deterministic selection: set the goal, resolve an evidence plan, query/admit matching memories, then broadcast. Benchmarks use task-specific resolver adapters, but the controller itself depends only on application ports.
+`gwt_context.application.attention.AttentionController` provides a reusable path for deterministic selection: set the goal, resolve an evidence plan, query/admit matching memories, then broadcast. Production planning supports semantic lookup, exact structured collection evidence, relation-graph continuation, hybrid mode, and auto mode. The controller itself depends only on application ports.
 
-MCP clients can call `gwt_attend(question, keywords?, k?)` for this path without
+MCP clients can call `gwt_attend(question, keywords?, k?, planner?)` for this path without
 manually sequencing `gwt_set_goal`, `gwt_query(admit=true)`, and `gwt_broadcast`.
-The most recent attention trace is available at `gwt://attention/last`.
+They can also call `gwt_resolve` or `gwt_collection_query` when they need an exact runtime answer without a broadcast. The most recent attention trace is available at `gwt://attention/last` and summarized by `gwt_trace_explain`.
 
 ## Architecture
 
@@ -124,6 +127,7 @@ src/gwt_context/
 │   └── broadcast.py  # BroadcastAssembler (workspace → text)
 ├── application/      # Orchestration
 │   ├── attention.py  # Explicit attention controller
+│   ├── structured.py # Runtime collection and relation evidence
 │   ├── cycle.py      # SelectionBroadcastCycle + PreconsciousBuffer
 │   ├── ingestion.py  # Content → MemoryItem pipeline
 │   └── goal_manager.py
@@ -133,7 +137,7 @@ src/gwt_context/
 │   ├── embeddings.py # SentenceTransformerEmbedder
 │   └── config.py     # GWTConfig
 ├── mcp/              # MCP interface
-│   ├── tools.py      # 8 tool definitions
+│   ├── tools.py      # 12 tool definitions
 │   ├── resources.py  # MCP resources
 │   └── prompts.py    # System + multi-hop prompts
 └── server.py         # FastMCP wiring + entry point
