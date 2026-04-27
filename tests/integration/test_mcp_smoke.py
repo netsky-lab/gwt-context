@@ -98,6 +98,7 @@ def test_mcp_tool_and_resource_smoke(tmp_path: Path) -> None:
         question="Find Ada Lovelace's doctoral advisor",
         keywords=["Ada", "advisor"],
         k=1,
+        passes=2,
     )
     broadcast = _tool_call(mcp, "gwt_broadcast")()
     stats = _tool_call(mcp, "gwt_inspect")(target="stats")
@@ -110,6 +111,7 @@ def test_mcp_tool_and_resource_smoke(tmp_path: Path) -> None:
     assert query_results[0]["id"] == stored["id"]
     assert admitted_query_results[0]["admitted"] is True
     assert attend["evidence_plan"]["strategy"] == "generic_semantic_query_planner"
+    assert attend["passes_completed"] == 2
     assert "Ada Lovelace" in attend["broadcast"]
     assert "Find Ada Lovelace" in last_attention_resource
     assert "Ada Lovelace" in broadcast

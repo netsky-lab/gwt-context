@@ -2,6 +2,8 @@
 
 ## 2026-04-27
 
+- Added parameterized multi-pass `gwt_attend`, structured generic planner queries, attend failure analysis, and a release baseline documenting deploy readiness.
+- Added benchmark comparison tables with evidence metrics and refreshed one-pass/two-pass Qwen attend reports for RULER and LongBench Pro.
 - Added benchmark `--gwt-mode attend`, `gwt://attention/last`, and an npm benchmark smoke script.
 - Refreshed Qwen tools/attend reports after `admit=true` and prompt/schema changes, including a synthesis smoke run.
 - Expanded the generic planner with relation-aware query planning for production `gwt_attend`.

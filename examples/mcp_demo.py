@@ -95,6 +95,7 @@ def run_demo() -> dict[str, Any]:
             question="Find the doctoral advisor chain for Ada Lovelace",
             keywords=["Ada", "doctoral", "advisor"],
             k=2,
+            passes=2,
         )
         broadcast = gwt_broadcast()
         stats = gwt_inspect("stats")

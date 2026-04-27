@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from gwt_context.application.attention import (
     AttentionController,
     EvidencePlan,
@@ -63,6 +65,60 @@ def test_attention_controller_sets_goal_admits_queries_and_broadcasts() -> None:
         "gwt_query",
         "gwt_broadcast",
     ]
+    assert result.pass_count == 1
+
+
+def test_attention_controller_can_run_second_pass_from_broadcast_entities() -> None:
+    cycle = Mock()
+    cycle.set_goal = Mock(
+        return_value=Goal(id="goal-1", description="Who was Ada's doctoral advisor?")
+    )
+    cycle.enqueue_for_competition = Mock()
+    cycle.run = Mock(
+        side_effect=[
+            SimpleNamespace(
+                id="broadcast-1",
+                formatted_content=(
+                    "Ada Lovelace's doctoral advisor was Grace Hopper at MIT"
+                ),
+                admitted_ids=["item-1"],
+                evicted_ids=[],
+            ),
+            SimpleNamespace(
+                id="broadcast-2",
+                formatted_content=(
+                    "Grace Hopper's doctoral advisor was Alan Turing at Cambridge"
+                ),
+                admitted_ids=["item-2"],
+                evicted_ids=[],
+            ),
+        ]
+    )
+    item_1 = MemoryItem(id="item-1", content="Ada -> Grace")
+    item_2 = MemoryItem(id="item-2", content="Grace -> Alan")
+    ingestion = Mock()
+    ingestion.query_similar = Mock(side_effect=[[item_1], [item_2], [], [], []])
+
+    controller = AttentionController(
+        cycle,
+        ingestion,
+        [
+            StaticResolver(),
+        ],
+        query_k=2,
+    )
+    result = controller.run(
+        "Who advises Ada?",
+        ["Ada -> Grace"],
+        {"kind": "chain"},
+        passes=2,
+    )
+
+    queries = [call.kwargs["query"] for call in ingestion.query_similar.call_args_list]
+    assert "Grace Hopper related evidence" in queries
+    assert cycle.run.call_count == 2
+    assert result.pass_count == 2
+    assert result.tool_call_count == 8
 
 
 def test_attention_controller_falls_back_to_question_query() -> None:
@@ -87,6 +143,14 @@ def test_attention_controller_falls_back_to_question_query() -> None:
     assert result.tool_call_count == 3
 
 
+def test_attention_controller_rejects_invalid_pass_count() -> None:
+    cycle = Mock()
+    ingestion = Mock()
+
+    with pytest.raises(ValueError, match="passes"):
+        AttentionController(cycle, ingestion).run("Q", passes=0)
+
+
 def test_generic_evidence_resolver_plans_question_queries() -> None:
     plan = GenericEvidenceResolver(max_queries=3).resolve(
         "Who advised 'Ada Lovelace' at MIT?",
@@ -98,3 +162,26 @@ def test_generic_evidence_resolver_plans_question_queries() -> None:
     assert plan.queries[0] == "Who advised 'Ada Lovelace' at MIT?"
     assert "Ada Lovelace" in plan.queries
     assert len(plan.queries) == 3
+
+
+def test_generic_evidence_resolver_plans_structured_aggregation_queries() -> None:
+    plan = GenericEvidenceResolver(max_queries=6).resolve(
+        "What is the average years of experience for employees in the Data Science "
+        "department? Round to one decimal place.",
+        [],
+        {"department": "Data Science", "task_type": "aggregate"},
+    )
+
+    assert "Data Science department" in plan.queries
+    assert "Data Science department years experience" in plan.queries
+
+
+def test_generic_evidence_resolver_plans_field_target_queries() -> None:
+    plan = GenericEvidenceResolver(max_queries=6).resolve(
+        "How many employees have status = 'on_leave'? Give just the number.",
+        [],
+        {},
+    )
+
+    assert "employees status on_leave" in plan.queries
+    assert "Status: on_leave" in plan.queries

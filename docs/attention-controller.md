@@ -19,6 +19,8 @@ The architecture now separates concerns:
 - `AttentionController` performs the reusable GWT loop through application
   ports: set goal, plan queries, admit matches, broadcast.
 - Production MCP uses a generic semantic query planner through `gwt_attend`.
+- `gwt_attend` supports bounded multi-pass attention through `passes`, plus
+  `k`, `planner`, and `admit` parameters. The runtime default remains one pass.
 - The latest `gwt_attend` run is observable through `gwt://attention/last`.
 - Benchmarks use task-specific resolver adapters under `tests/benchmarks/`.
 - Hybrid mode lets the model synthesize from selected evidence without letting
@@ -32,6 +34,9 @@ The architecture now separates concerns:
 - Free-form tools mode remains valuable for studying agent behavior, but
   regressions should be classified by failure bucket before changing storage or
   competition logic.
+- Two-pass attend is experimental. On the 2026-04-27 Qwen refresh it increased
+  tool calls and did not improve the broad matrix, so benchmark default stays
+  at one pass unless `BENCHMARK_ATTEND_PASSES` is set.
 
 ## Regression Gates
 

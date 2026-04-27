@@ -142,22 +142,47 @@ class TestBoundaryDelegation:
         cycle.set_goal = Mock(return_value=Mock(id="goal-1", description="Find Ada", keywords=[]))
         cycle.enqueue_for_competition = Mock()
         cycle.run = Mock(
-            return_value=Mock(
-                id="broadcast-1",
-                formatted_content="Ada Lovelace's doctoral advisor was Grace Hopper",
-                admitted_ids=["item-1"],
-                evicted_ids=[],
-            )
+            side_effect=[
+                Mock(
+                    id="broadcast-1",
+                    formatted_content="Ada Lovelace's doctoral advisor was Grace Hopper at MIT",
+                    admitted_ids=["item-1"],
+                    evicted_ids=[],
+                ),
+                Mock(
+                    id="broadcast-2",
+                    formatted_content="Grace Hopper's doctoral advisor was Alan Turing",
+                    admitted_ids=["item-1"],
+                    evicted_ids=[],
+                ),
+            ]
         )
         cycle.inspect = Mock(return_value={"target": "workspace", "items": []})
         ingestion = Mock()
         ingestion.query_similar = Mock(return_value=[item])
 
         mcp = _register_tool_cycle_handlers(cycle, ingestion)
-        result = _tool_call(mcp, "gwt_attend")("Find Ada Lovelace's doctoral advisor")
+        result = _tool_call(mcp, "gwt_attend")(
+            "Find Ada Lovelace's doctoral advisor",
+            passes=2,
+            planner="generic",
+            admit=True,
+        )
 
         cycle.set_goal.assert_called_once()
         cycle.enqueue_for_competition.assert_called()
-        cycle.run.assert_called_once()
+        assert cycle.run.call_count == 2
+        assert result["planner"] == "generic"
+        assert result["passes_completed"] == 2
+        assert result["admit"] is True
         assert result["evidence_plan"]["strategy"] == "generic_semantic_query_planner"
-        assert "Grace Hopper" in result["broadcast"]
+        assert "Alan Turing" in result["broadcast"]
+
+    def test_gwt_attend_rejects_unsupported_planner(self):
+        cycle = Mock()
+        ingestion = Mock()
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        result = _tool_call(mcp, "gwt_attend")("Q", planner="benchmark")
+
+        assert result["error"] == "unsupported planner: benchmark"

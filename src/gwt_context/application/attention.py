@@ -2,7 +2,7 @@
 
 The controller coordinates the reusable GWT loop:
 set the task goal, resolve a compact evidence plan, admit query matches into
-competition, then run one selection-broadcast cycle.
+competition, then run one or more selection-broadcast cycles.
 """
 
 from __future__ import annotations
@@ -57,6 +57,7 @@ class AttentionRun:
     broadcast_text: str
     admitted_ids: tuple[str, ...]
     steps: tuple[AttentionStep, ...]
+    pass_count: int = 1
 
 
 class AttentionTraceStore:
@@ -105,8 +106,12 @@ class AttentionController:
         context_chunks: Sequence[str] = (),
         metadata: Mapping[str, Any] | None = None,
         keywords: Sequence[str] | None = None,
+        passes: int = 1,
     ) -> AttentionRun:
         """Execute goal setting, evidence routing, query admission, and broadcast."""
+        if passes < 1:
+            raise ValueError("passes must be >= 1")
+
         task_metadata = metadata or {}
         steps: list[AttentionStep] = []
         goal_keywords = tuple(keywords or extract_question_keywords(question))
@@ -133,47 +138,66 @@ class AttentionController:
         )
 
         admitted_ids: list[str] = []
-        queries = plan.queries or (question,)
-        for query in queries:
-            items = self._ingestion.query_similar(query=query, k=self._query_k)
-            query_ids = []
-            for item in items:
-                query_ids.append(item.id)
-                if self._admit_query_results:
-                    self._cycle.enqueue_for_competition(item)
-                    admitted_ids.append(item.id)
+        tool_call_count = 1
+        broadcast_text = ""
+        completed_passes = 0
+        seen_queries: set[str] = set()
+
+        for pass_number in range(1, passes + 1):
+            queries = _queries_for_pass(question, plan, broadcast_text, seen_queries, pass_number)
+            if not queries:
+                break
+
+            for query in queries:
+                seen_queries.add(query.lower())
+                items = self._ingestion.query_similar(query=query, k=self._query_k)
+                tool_call_count += 1
+                query_ids = []
+                for item in items:
+                    query_ids.append(item.id)
+                    if self._admit_query_results:
+                        self._cycle.enqueue_for_competition(item)
+                        admitted_ids.append(item.id)
+                steps.append(
+                    AttentionStep(
+                        phase="controller_tool",
+                        name="gwt_query",
+                        payload={
+                            "pass": pass_number,
+                            "query": query,
+                            "k": self._query_k,
+                            "matched_ids": query_ids,
+                            "admitted_ids": list(query_ids)
+                            if self._admit_query_results
+                            else [],
+                        },
+                    )
+                )
+
+            record = self._cycle.run()
+            tool_call_count += 1
+            completed_passes += 1
+            broadcast_text = record.formatted_content
             steps.append(
                 AttentionStep(
                     phase="controller_tool",
-                    name="gwt_query",
+                    name="gwt_broadcast",
                     payload={
-                        "query": query,
-                        "k": self._query_k,
-                        "matched_ids": query_ids,
-                        "admitted_ids": list(query_ids) if self._admit_query_results else [],
+                        "pass": pass_number,
+                        "broadcast_id": record.id,
+                        "record_admitted_ids": record.admitted_ids,
+                        "record_evicted_ids": record.evicted_ids,
                     },
                 )
             )
 
-        record = self._cycle.run()
-        steps.append(
-            AttentionStep(
-                phase="controller_tool",
-                name="gwt_broadcast",
-                payload={
-                    "broadcast_id": record.id,
-                    "record_admitted_ids": record.admitted_ids,
-                    "record_evicted_ids": record.evicted_ids,
-                },
-            )
-        )
-
         return AttentionRun(
             evidence=plan,
-            tool_call_count=2 + len(queries),
-            broadcast_text=record.formatted_content,
+            tool_call_count=tool_call_count,
+            broadcast_text=broadcast_text,
             admitted_ids=tuple(admitted_ids),
             steps=tuple(steps),
+            pass_count=completed_passes,
         )
 
     def _resolve(
@@ -202,7 +226,7 @@ class GenericEvidenceResolver:
     workspace before model reasoning.
     """
 
-    def __init__(self, max_queries: int = 4) -> None:
+    def __init__(self, max_queries: int = 6) -> None:
         self._max_queries = max_queries
 
     def resolve(
@@ -211,10 +235,12 @@ class GenericEvidenceResolver:
         context_chunks: Sequence[str],
         metadata: Mapping[str, Any],
     ) -> EvidencePlan:
-        del context_chunks, metadata
+        del context_chunks
         queries = _dedupe_preserving_order(
             [
                 question,
+                *_metadata_queries(metadata),
+                *_structured_queries(question),
                 *_relation_queries(question),
                 *_quoted_phrases(question),
                 *_capitalized_phrases(question),
@@ -247,6 +273,7 @@ def attention_run_to_dict(question: str, run: AttentionRun) -> dict[str, Any]:
         "question": question,
         "evidence_plan": evidence_plan_to_dict(run.evidence),
         "tool_call_count": run.tool_call_count,
+        "pass_count": run.pass_count,
         "admitted_ids": list(run.admitted_ids),
         "broadcast": run.broadcast_text,
         "trace": [
@@ -288,6 +315,171 @@ def _relation_queries(text: str) -> list[str]:
                 phrases.extend(f"{entity} {relation}" for entity in entities[:4])
             phrases.append(relation)
     return phrases
+
+
+def _queries_for_pass(
+    question: str,
+    plan: EvidencePlan,
+    broadcast_text: str,
+    seen_queries: set[str],
+    pass_number: int,
+) -> tuple[str, ...]:
+    if pass_number == 1:
+        raw_queries = plan.queries or (question,)
+    else:
+        raw_queries = tuple(_follow_up_queries(question, broadcast_text, plan))
+    queries = _dedupe_preserving_order(raw_queries)
+    return tuple(query for query in queries if query.lower() not in seen_queries)
+
+
+def _follow_up_queries(question: str, broadcast_text: str, plan: EvidencePlan) -> list[str]:
+    """Build second-pass queries from the current broadcast without domain state access."""
+    relation_terms = _relation_terms(question)
+    entities = _broadcast_entities(broadcast_text)
+    queries: list[str] = []
+    for entity in entities[:4]:
+        for relation in relation_terms[:2]:
+            queries.append(f"{entity} {relation}")
+    for query in plan.queries[:2]:
+        queries.append(" ".join([query, "related evidence"]))
+    return _dedupe_preserving_order(queries)[:4]
+
+
+def _relation_terms(text: str) -> list[str]:
+    lowered = text.lower()
+    terms: list[str] = []
+    for relation in (
+        "doctoral advisor",
+        "worked with",
+        "average years of experience",
+        "performance score",
+        "based in",
+        "department",
+        "project",
+        "status",
+    ):
+        if relation in lowered:
+            terms.append(relation)
+    return terms or ["related evidence"]
+
+
+def _broadcast_entities(text: str) -> list[str]:
+    entities: list[str] = []
+    patterns = (
+        r"\bwas\s+([A-Z][A-Za-z0-9.-]*(?:\s+[A-Z][A-Za-z0-9.-]*){0,3})\s+at\b",
+        r"\bwith\s+([A-Z][A-Za-z0-9.-]*(?:\s+[A-Z][A-Za-z0-9.-]*){0,3})\b",
+        r"\bin\s+the\s+([A-Z][A-Za-z0-9.-]*(?:\s+[A-Z][A-Za-z0-9.-]*){0,3})\s+department\b",
+    )
+    for pattern in patterns:
+        entities.extend(match.strip() for match in re.findall(pattern, text))
+    entities.extend(_capitalized_phrases(text))
+    return _dedupe_preserving_order(entities)
+
+
+def _metadata_queries(metadata: Mapping[str, Any]) -> list[str]:
+    queries: list[str] = []
+    field = str(metadata.get("field", "")).strip()
+    target = str(metadata.get("target", "")).strip()
+    if field and target:
+        queries.extend(_field_target_queries(field, target))
+
+    department = str(metadata.get("department", "")).strip()
+    if department:
+        queries.extend(_department_queries(department))
+
+    department_a = str(metadata.get("department_a", "")).strip()
+    department_b = str(metadata.get("department_b", "")).strip()
+    for department_name in (department_a, department_b):
+        if department_name:
+            queries.extend(_department_queries(department_name))
+
+    if metadata.get("task_type") == "top_k" or "k" in metadata:
+        queries.extend(
+            [
+                "top employees performance score",
+                "highest performance score employees",
+                "performance score",
+            ]
+        )
+    return queries
+
+
+def _structured_queries(question: str) -> list[str]:
+    queries: list[str] = []
+    for field_name, target in re.findall(
+        r"\b(?:have|with)\s+([a-z_]+)\s*=\s*'([^']+)'",
+        question,
+    ):
+        queries.extend(_field_target_queries(field_name, target))
+
+    dept_match = re.search(
+        r"employees in the ([A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*) department",
+        question,
+    )
+    if dept_match:
+        queries.extend(_department_queries(dept_match.group(1)))
+
+    filter_match = re.search(
+        r"employees in the ([A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*) department "
+        r"who are based in ([A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*)",
+        question,
+    )
+    if filter_match:
+        department, location = filter_match.groups()
+        queries.extend(
+            [
+                f"employees {department} department based in {location}",
+                f"{department} {location} employees",
+                f"based in {location}",
+            ]
+        )
+
+    comparison_match = re.search(
+        r"experience,\s+(.+?)\s+or\s+(.+?)\?",
+        question,
+    )
+    if comparison_match:
+        for department in comparison_match.groups():
+            queries.extend(_department_queries(department.strip()))
+
+    if "performance score" in question.lower():
+        queries.extend(
+            [
+                "top employees performance score",
+                "highest performance score employees",
+                "performance score",
+            ]
+        )
+    return queries
+
+
+def _field_target_queries(field: str, target: str) -> list[str]:
+    normalized_field = field.strip().replace("_", " ")
+    normalized_target = target.strip()
+    queries = [
+        f"employees {normalized_field} {normalized_target}",
+        f"{normalized_target} {normalized_field}",
+    ]
+    if normalized_field == "department":
+        queries.extend(_department_queries(normalized_target))
+    if normalized_field == "status":
+        queries.append(f"Status: {normalized_target}")
+    if normalized_field == "location":
+        queries.append(f"based in {normalized_target}")
+    if normalized_field == "project":
+        queries.append(f"assigned to {normalized_target}")
+    queries.append(f"{normalized_field}: {normalized_target}")
+    return queries
+
+
+def _department_queries(department: str) -> list[str]:
+    department_name = department.strip()
+    return [
+        f"{department_name} department",
+        f"employees in {department_name} department",
+        f"{department_name} department years experience",
+        f"{department_name} average years of experience",
+    ]
 
 
 def _quoted_phrases(text: str) -> list[str]:

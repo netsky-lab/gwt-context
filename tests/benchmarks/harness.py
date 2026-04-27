@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -512,6 +513,7 @@ Do not print tool-call markup as text. If you need a tool, use the official tool
 """
 
 MAX_TOOL_ROUNDS = 10
+ATTEND_PASSES = max(1, int(os.getenv("BENCHMARK_ATTEND_PASSES", "1")))
 
 HYBRID_SYSTEM_PROMPT = """Answer from the supplied GWT workspace evidence only.
 
@@ -1287,7 +1289,7 @@ def _run_attend_controller(
     controller = AttentionController(
         session.cycle,
         session.ingestion,
-        [GenericEvidenceResolver(max_queries=4)],
+        [GenericEvidenceResolver(max_queries=6)],
         query_k=10,
         admit_query_results=True,
     )
@@ -1296,6 +1298,7 @@ def _run_attend_controller(
         task.context_chunks,
         task.metadata,
         keywords=extract_question_keywords(task.question),
+        passes=ATTEND_PASSES,
     )
     for step in run.steps:
         trace.append(

@@ -183,31 +183,51 @@ def register_tools(
         question: str,
         keywords: list[str] | None = None,
         k: int = 5,
+        passes: int = 1,
+        planner: str = "generic",
+        admit: bool = True,
     ) -> dict[str, Any]:
-        """Run an explicit attention pass for the current question.
+        """Run explicit attention passes for the current question.
 
         This is a one-call path for goal-directed GWT selection:
         set the active goal, plan semantic evidence queries, admit matches into
-        competition, run broadcast, and return the selected workspace.
+        competition, run one or more broadcasts, and return the selected workspace.
 
         Args:
             question: Current task/question that should guide attention.
             keywords: Optional goal keywords. If omitted, keywords are inferred.
             k: Number of semantic matches to admit per planned query.
+            passes: Maximum attention/broadcast passes to run.
+            planner: Evidence planner name. Currently only "generic" is supported.
+            admit: Whether query matches should be admitted into competition.
         """
+        if planner != "generic":
+            return {
+                "error": f"unsupported planner: {planner}",
+                "supported_planners": ["generic"],
+            }
+        if passes < 1:
+            return {"error": "passes must be >= 1"}
+        if k < 1:
+            return {"error": "k must be >= 1"}
+
         controller = AttentionController(
             cycle=cycle,
             ingestion=ingestion,
             resolvers=[GenericEvidenceResolver()],
             query_k=k,
-            admit_query_results=True,
+            admit_query_results=admit,
         )
-        run = controller.run(question=question, keywords=keywords)
+        run = controller.run(question=question, keywords=keywords, passes=passes)
         trace = attention_run_to_dict(question, run)
         if attention_trace is not None:
             trace = attention_trace.record(question, run)
         return {
             "question": question,
+            "planner": planner,
+            "passes_requested": passes,
+            "passes_completed": run.pass_count,
+            "admit": admit,
             "evidence_plan": evidence_plan_to_dict(run.evidence),
             "tool_call_count": run.tool_call_count,
             "admitted_ids": list(run.admitted_ids),

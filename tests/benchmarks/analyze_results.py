@@ -136,6 +136,30 @@ def classify_gwt_failure(result: dict[str, Any]) -> str:
 def format_markdown(summaries: list[dict[str, Any]]) -> str:
     """Render summaries as Markdown."""
     lines = ["# Benchmark Result Summary", ""]
+    if summaries:
+        lines.extend(
+            [
+                "## Comparison Table",
+                "",
+                "| Benchmark | Mode | Tasks | GWT acc | Baseline acc | "
+                "Evidence recall | Evidence precision | Token delta |",
+                "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for summary in summaries:
+            lines.append(
+                "| "
+                f"{summary['benchmark_name']} | "
+                f"{summary['gwt_mode']} | "
+                f"{summary['task_count']} | "
+                f"{summary['gwt_accuracy']:.1%} | "
+                f"{summary['baseline_accuracy']:.1%} | "
+                f"{summary['avg_evidence_recall']:.1%} | "
+                f"{summary['avg_evidence_precision']:.1%} | "
+                f"{summary['gwt_token_reduction_pct']:+.1f}% |"
+            )
+        lines.append("")
+
     for summary in summaries:
         lines.extend(
             [

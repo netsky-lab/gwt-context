@@ -53,7 +53,10 @@ def test_summarize_report_compares_gwt_and_baseline() -> None:
     assert summary["avg_evidence_precision"] == 0.5
     assert summary["avg_evidence_recall"] == 1.0
     assert summary["buckets"]["gwt_only_correct"] == 1
-    assert "demo - model-x" in format_markdown([summary])
+    rendered = format_markdown([summary])
+    assert "## Comparison Table" in rendered
+    assert "| Benchmark | Mode | Tasks | GWT acc | Baseline acc |" in rendered
+    assert "demo - model-x" in rendered
 
 
 def test_classify_gwt_failure_detects_tool_loop_pathologies() -> None:
