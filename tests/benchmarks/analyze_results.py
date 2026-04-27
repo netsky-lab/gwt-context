@@ -70,6 +70,7 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
         "path": report.get("_path", ""),
         "benchmark_name": report.get("benchmark_name", ""),
         "model": report.get("model", ""),
+        "gwt_mode": report.get("gwt_mode", "tools"),
         "task_count": len(gwt_results),
         "gwt_accuracy": _accuracy(gwt_results),
         "baseline_accuracy": _accuracy(baseline_results),
@@ -91,7 +92,7 @@ def format_markdown(summaries: list[dict[str, Any]]) -> str:
     for summary in summaries:
         lines.extend(
             [
-                f"## {summary['benchmark_name']} - {summary['model']}",
+                f"## {summary['benchmark_name']} - {summary['model']} ({summary['gwt_mode']})",
                 "",
                 f"- Source: `{summary['path']}`",
                 f"- Tasks: {summary['task_count']}",
@@ -110,7 +111,7 @@ def format_markdown(summaries: list[dict[str, Any]]) -> str:
             lines.append(f"- {name}: {count}")
 
         if summary["examples"]:
-            lines.extend(["", "Failure examples:"])
+            lines.extend(["", "Delta examples:"])
             for example in summary["examples"]:
                 lines.append(
                     "- "

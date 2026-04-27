@@ -64,29 +64,38 @@ ENTITY_POOLS = {
 CHAIN_TEMPLATES = {
     "advisor": {
         "hop_template": "{person_a}'s doctoral advisor was {person_b} at {university}",
-        "question_2hop": "Who was the doctoral advisor of {start}?",
-        "question_3hop": "Who was the doctoral advisor of the doctoral advisor of {start}?",
-        "question_4hop": (
+        "question_2hop": "Who was the doctoral advisor of the doctoral advisor of {start}?",
+        "question_3hop": (
             "Who was the doctoral advisor of the doctoral advisor "
             "of the doctoral advisor of {start}?"
+        ),
+        "question_4hop": (
+            "Who was the doctoral advisor of the doctoral advisor "
+            "of the doctoral advisor of the doctoral advisor of {start}?"
         ),
     },
     "workplace": {
         "hop_template": "{person_a} worked with {person_b} at {university}",
-        "question_2hop": "Who did {start} work with?",
-        "question_3hop": "Who worked with the person that {start} worked with?",
+        "question_2hop": "Who worked with the person that {start} worked with?",
+        "question_3hop": (
+            "Who worked with the person who worked with the person "
+            "that {start} worked with?"
+        ),
         "question_4hop": (
-            "Follow the chain: {start} worked with someone, who worked "
-            "with someone else. Who is at the end?"
+            "Follow four work-with links starting from {start}. "
+            "Who is at the end?"
         ),
     },
     "discovery": {
         "hop_template": "{person_a} discovered {field} which was later extended by {person_b}",
-        "question_2hop": "Who extended the work of {start}?",
-        "question_3hop": "Who extended the work of the person who extended {start}'s work?",
+        "question_2hop": "Who extended the work of the person who extended {start}'s work?",
+        "question_3hop": (
+            "Who extended the work of the person who extended the work "
+            "of the person who extended {start}'s work?"
+        ),
         "question_4hop": (
             "Follow the discovery chain starting from {start} "
-            "through 3 extensions. Who is at the end?"
+            "through 4 extensions. Who is at the end?"
         ),
     },
 }
@@ -271,6 +280,12 @@ def main():
         default=int(env_or_default("BENCHMARK_CONCURRENCY", "1")),
         help="Benchmark task execution concurrency (default: BENCHMARK_CONCURRENCY)",
     )
+    parser.add_argument(
+        "--gwt-mode",
+        choices=["tools", "controlled"],
+        default="tools",
+        help="GWT execution mode: model-controlled tools or deterministic controller",
+    )
     args = parser.parse_args()
 
     if not args.api_base or not args.model:
@@ -309,6 +324,7 @@ def main():
         results_dir=Path(args.results_dir),
         max_retries=args.max_retries,
         concurrency=args.concurrency,
+        gwt_mode=args.gwt_mode,
     )
 
 

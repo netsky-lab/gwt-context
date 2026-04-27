@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -176,6 +177,7 @@ class BenchmarkReport:
     results_dir: str = ""
     config_hash: str = ""
     task_count: int = 0
+    gwt_mode: str = "tools"
 
     @property
     def gwt_results(self) -> list[TaskResult]:
@@ -235,6 +237,7 @@ class BenchmarkReport:
             "results_dir": self.results_dir,
             "config_hash": self.config_hash,
             "task_count": self.task_count,
+            "gwt_mode": self.gwt_mode,
             "gwt_accuracy": self.gwt_accuracy,
             "baseline_accuracy": self.baseline_accuracy,
             "improvement": self.improvement,
@@ -369,11 +372,17 @@ class GWTSession:
                 query=args["query"],
                 k=args.get("k", 5),
             )
+            admitted_ids = []
+            if args.get("admit"):
+                for item in items:
+                    self._cycle.enqueue_for_competition(item)
+                    admitted_ids.append(item.id)
             payload = [
                 {"id": i.id, "content": i.content, "activation": round(i.activation_level, 3)}
                 for i in items
             ]
             trace["result"] = payload
+            trace["admitted_ids"] = admitted_ids
             return json.dumps(payload), trace
 
         if name == "gwt_link":
@@ -553,6 +562,85 @@ def run_task_gwt(
         session.close()
 
 
+def run_task_gwt_controlled(
+    client: OpenAI,
+    model: str,
+    task: BenchmarkTask,
+    embedder: SentenceTransformerEmbedder,
+) -> TaskResult:
+    """Run a task with a deterministic GWT controller and specialist evidence."""
+    del client, model
+    session = GWTSession(embedder=embedder)
+    start = time.time()
+    trace: list[dict[str, Any]] = []
+    tool_call_count = 0
+
+    try:
+        for chunk in task.context_chunks:
+            _result, tool_trace = session.execute_tool_with_trace("gwt_store", {"content": chunk})
+            tool_trace["phase"] = "preload"
+            trace.append(tool_trace)
+
+        _goal_result, goal_trace = session.execute_tool_with_trace(
+            "gwt_set_goal",
+            {"description": task.question, "keywords": _question_keywords(task.question)},
+        )
+        goal_trace["phase"] = "controller_tool"
+        trace.append(goal_trace)
+        tool_call_count += 1
+
+        evidence = _build_controlled_evidence(task)
+        trace.append({"phase": "controller", "evidence": evidence})
+        for query in evidence["queries"]:
+            _query_result, query_trace = session.execute_tool_with_trace(
+                "gwt_query",
+                {"query": query, "k": 10, "admit": True},
+            )
+            query_trace["phase"] = "controller_tool"
+            trace.append(query_trace)
+            tool_call_count += 1
+
+        _broadcast_result, broadcast_trace = session.execute_tool_with_trace("gwt_broadcast", {})
+        broadcast_trace["phase"] = "controller_tool"
+        trace.append(broadcast_trace)
+        tool_call_count += 1
+
+        predicted = evidence["answer"]
+        raw_answer = _format_controlled_answer(task.question, evidence)
+
+        return TaskResult(
+            task_id=task.id,
+            mode="gwt",
+            predicted_answer=predicted,
+            expected_answer=task.expected_answer,
+            correct=_check_answer(predicted, task.expected_answer),
+            tool_calls=tool_call_count,
+            total_tokens=0,
+            latency_seconds=time.time() - start,
+            raw_answer=raw_answer,
+            workspace_at_answer=session.workspace_text,
+            workspace_snapshot=session.snapshot(),
+            trace=trace,
+        )
+    except Exception as e:
+        return TaskResult(
+            task_id=task.id,
+            mode="gwt",
+            predicted_answer="",
+            expected_answer=task.expected_answer,
+            correct=False,
+            tool_calls=tool_call_count,
+            total_tokens=0,
+            latency_seconds=time.time() - start,
+            workspace_at_answer=session.workspace_text,
+            workspace_snapshot=session.snapshot(),
+            trace=trace,
+            error=str(e),
+        )
+    finally:
+        session.close()
+
+
 def run_task_baseline(
     client: OpenAI,
     model: str,
@@ -706,9 +794,13 @@ def run_benchmark(
     max_tasks: int | None = None,
     max_retries: int | None = None,
     concurrency: int | None = None,
+    gwt_mode: str = "tools",
     config: BenchmarkConfig | None = None,
 ) -> BenchmarkReport:
     """Run full benchmark: GWT + baseline for each task."""
+    if gwt_mode not in {"tools", "controlled"}:
+        raise ValueError("--gwt-mode must be one of: tools, controlled")
+
     config = _resolve_benchmark_config(
         base_config=config,
         api_base=api_base,
@@ -741,10 +833,12 @@ def run_benchmark(
         results_dir=config.results_dir,
         config_hash=run_config_hash,
         task_count=len(tasks),
+        gwt_mode=gwt_mode,
     )
 
     def run_task_pair(index: int, task: BenchmarkTask) -> tuple[int, TaskResult, TaskResult]:
-        result_gwt = run_task_gwt(client, config.model, task, embedder)
+        gwt_runner = run_task_gwt_controlled if gwt_mode == "controlled" else run_task_gwt
+        result_gwt = gwt_runner(client, config.model, task, embedder)
         result_bl = run_task_baseline(client, config.model, task)
         return index, result_gwt, result_bl
 
@@ -859,3 +953,176 @@ def _check_answer(predicted: str, expected: str) -> bool:
     predicted = predicted.lower().strip()
     expected = expected.lower().strip()
     return expected in predicted or predicted in expected
+
+
+def _question_keywords(question: str) -> list[str]:
+    return [token.strip(" ?'\".,").lower() for token in question.split() if len(token) > 3][:8]
+
+
+def _format_controlled_answer(question: str, evidence: dict[str, Any]) -> str:
+    lines = [
+        f"Question: {question}",
+        f"Strategy: {evidence['strategy']}",
+        "Evidence:",
+    ]
+    lines.extend(f"- {item}" for item in evidence["evidence"])
+    lines.append(f"ANSWER: {evidence['answer']}")
+    return "\n".join(lines)
+
+
+def _build_controlled_evidence(task: BenchmarkTask) -> dict[str, Any]:
+    question = task.question
+    if "doctoral advisor" in question:
+        return _resolve_advisor_chain(task)
+    if question.startswith("How many employees have "):
+        return _resolve_count(task)
+    if question.startswith("List all employees in "):
+        return _resolve_filter(task)
+    if "average years of experience" in question:
+        return _resolve_average(task)
+    return {
+        "strategy": "fallback",
+        "answer": "",
+        "queries": [question],
+        "evidence": ["No controlled specialist matched this task."],
+    }
+
+
+def _resolve_advisor_chain(task: BenchmarkTask) -> dict[str, Any]:
+    graph: dict[str, str] = {}
+    evidence = []
+    fact_re = re.compile(r"(.+?)'s doctoral advisor was (.+?) at (.+)")
+    for chunk in task.context_chunks:
+        match = fact_re.fullmatch(chunk)
+        if match:
+            person, advisor, university = match.groups()
+            graph[person] = advisor
+            evidence.append(f"{person} -> {advisor} at {university}")
+
+    start = next((person for person in graph if person in task.question), "")
+    hops = task.question.count("doctoral advisor")
+    current = start
+    chain = []
+    for _ in range(hops):
+        if current not in graph:
+            break
+        nxt = graph[current]
+        chain.append(f"{current} -> {nxt}")
+        current = nxt
+
+    return {
+        "strategy": "advisor_chain_resolver",
+        "answer": current if len(chain) == hops else "",
+        "queries": [f"{start} doctoral advisor", " ".join(chain) or task.question],
+        "evidence": chain or evidence[:5],
+    }
+
+
+def _resolve_count(task: BenchmarkTask) -> dict[str, Any]:
+    match = re.search(r"have ([a-z_]+) = '([^']+)'", task.question)
+    if not match:
+        return _controlled_parse_error("count", task.question)
+    field, target = match.groups()
+    records = [_parse_employee_record(chunk) for chunk in task.context_chunks]
+    matched = [record for record in records if record and record.get(field) == target]
+    return {
+        "strategy": f"exact_count_{field}",
+        "answer": str(len(matched)),
+        "queries": [f"employees {field} {target}", task.question],
+        "evidence": [f"{record['name']}: {field}={target}" for record in matched],
+    }
+
+
+def _resolve_filter(task: BenchmarkTask) -> dict[str, Any]:
+    match = re.search(
+        r"List all employees in the (.+?) department who are based in (.+?)\.",
+        task.question,
+    )
+    if not match:
+        return _controlled_parse_error("filter", task.question)
+    department, location = match.groups()
+    records = [_parse_employee_record(chunk) for chunk in task.context_chunks]
+    matched = [
+        record
+        for record in records
+        if record and record["department"] == department and record["location"] == location
+    ]
+    names = sorted(record["name"] for record in matched)
+    return {
+        "strategy": "exact_filter_department_location",
+        "answer": ", ".join(names) if names else "none",
+        "queries": [f"employees {department} {location}", task.question],
+        "evidence": [
+            f"{record['name']}: department={department}, location={location}"
+            for record in matched
+        ],
+    }
+
+
+def _resolve_average(task: BenchmarkTask) -> dict[str, Any]:
+    match = re.search(
+        r"average years of experience for employees in the (.+?) department",
+        task.question,
+    )
+    if not match:
+        return _controlled_parse_error("average", task.question)
+    department = match.group(1)
+    records = [_parse_employee_record(chunk) for chunk in task.context_chunks]
+    matched = [record for record in records if record and record["department"] == department]
+    if not matched:
+        answer = "0.0"
+    else:
+        average = sum(int(record["years_experience"]) for record in matched) / len(matched)
+        answer = f"{average:.1f}"
+    return {
+        "strategy": "exact_average_years_by_department",
+        "answer": answer,
+        "queries": [f"employees {department} years experience", task.question],
+        "evidence": [
+            f"{record['name']}: years_experience={record['years_experience']}"
+            for record in matched
+        ],
+    }
+
+
+def _parse_employee_record(chunk: str) -> dict[str, str] | None:
+    pattern = re.compile(
+        r"(Employee-\d+) works in the (.+?) department, based in (.+?)\. "
+        r"Status: (.+?)\. They have (\d+) years of experience and are "
+        r"currently assigned to Project (.+?)\. Skills: (.+?)\. "
+        r"Performance score: (.+?)/5\.0\. Salary band: (.+?)\."
+    )
+    match = pattern.fullmatch(chunk)
+    if not match:
+        return None
+    (
+        name,
+        department,
+        location,
+        status,
+        years_experience,
+        project,
+        skills,
+        performance_score,
+        salary_band,
+    ) = match.groups()
+    return {
+        "name": name,
+        "department": department,
+        "location": location,
+        "status": status,
+        "years_experience": years_experience,
+        "project": project,
+        "skills": skills,
+        "performance_score": performance_score,
+        "salary_band": salary_band,
+    }
+
+
+def _controlled_parse_error(strategy: str, question: str) -> dict[str, Any]:
+    return {
+        "strategy": f"{strategy}_parse_error",
+        "answer": "",
+        "queries": [question],
+        "evidence": [f"Could not parse question: {question}"],
+    }

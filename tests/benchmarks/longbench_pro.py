@@ -292,6 +292,12 @@ def main():
         default=int(env_or_default("BENCHMARK_CONCURRENCY", "1")),
         help="Benchmark task execution concurrency (default: BENCHMARK_CONCURRENCY)",
     )
+    parser.add_argument(
+        "--gwt-mode",
+        choices=["tools", "controlled"],
+        default="tools",
+        help="GWT execution mode: model-controlled tools or deterministic controller",
+    )
     args = parser.parse_args()
 
     if not args.api_base or not args.model:
@@ -328,6 +334,7 @@ def main():
         results_dir=Path(args.results_dir),
         max_retries=args.max_retries,
         concurrency=args.concurrency,
+        gwt_mode=args.gwt_mode,
     )
 
 

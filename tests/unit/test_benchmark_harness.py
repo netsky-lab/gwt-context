@@ -11,6 +11,7 @@ from tests.benchmarks.harness import (
     BenchmarkTask,
     GWTSession,
     TaskResult,
+    _build_controlled_evidence,
     _build_openai_client,
     run_benchmark,
 )
@@ -337,3 +338,45 @@ def test_gwt_session_returns_structured_tool_errors(monkeypatch) -> None:
 
     assert "missing required argument" in result
     assert trace["error"] == "missing required argument: description"
+
+
+def test_controlled_evidence_resolves_advisor_chain() -> None:
+    task = BenchmarkTask(
+        id="chain",
+        question="Who was the doctoral advisor of the doctoral advisor of Ada Lovelace?",
+        context_chunks=[
+            "Ada Lovelace's doctoral advisor was Grace Hopper at MIT",
+            "Grace Hopper's doctoral advisor was Alan Turing at Cambridge",
+        ],
+        expected_answer="Alan Turing",
+    )
+
+    evidence = _build_controlled_evidence(task)
+
+    assert evidence["strategy"] == "advisor_chain_resolver"
+    assert evidence["answer"] == "Alan Turing"
+
+
+def test_controlled_evidence_resolves_longbench_count() -> None:
+    task = BenchmarkTask(
+        id="count",
+        question="How many employees have location = 'New York'? Give just the number.",
+        context_chunks=[
+            (
+                "Employee-001 works in the Engineering department, based in New York. "
+                "Status: active. They have 4 years of experience and are currently assigned "
+                "to Project Atlas. Skills: Python. Performance score: 4.0/5.0. Salary band: L4."
+            ),
+            (
+                "Employee-002 works in the Sales department, based in Berlin. "
+                "Status: active. They have 3 years of experience and are currently assigned "
+                "to Project Beacon. Skills: SQL. Performance score: 3.5/5.0. Salary band: L3."
+            ),
+        ],
+        expected_answer="1",
+    )
+
+    evidence = _build_controlled_evidence(task)
+
+    assert evidence["strategy"] == "exact_count_location"
+    assert evidence["answer"] == "1"

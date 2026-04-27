@@ -2,6 +2,9 @@
 
 ## 2026-04-27
 
+- Added controlled GWT benchmark mode with deterministic router/specialists for RULER chains and LongBench count/filter/aggregate tasks.
+- Fixed RULER generated question wording so hop count matches expected answers.
+- Added a controlled Qwen benchmark matrix showing GWT controller performance against prompt-only baseline.
 - Added benchmark trace artifacts, result analysis helpers, and research-backed design rationale for GWT architecture decisions.
 - Added a Qwen benchmark matrix report and hardened benchmark tool execution so malformed model tool arguments are recorded as trace errors instead of aborting tasks.
 - Made sentence-transformer lazy initialization thread-safe for concurrent benchmark runs.

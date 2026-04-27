@@ -37,6 +37,7 @@ python -m tests.benchmarks.ruler_multi_hop \
   --api-path "$BENCHMARK_API_PATH" \
   --model "$BENCHMARK_MODEL" \
   --api-key "$BENCHMARK_API_KEY" \
+  --gwt-mode controlled \
   --max-tasks 3
 
 python -m tests.benchmarks.longbench_pro \
@@ -44,9 +45,14 @@ python -m tests.benchmarks.longbench_pro \
   --api-path "$BENCHMARK_API_PATH" \
   --model "$BENCHMARK_MODEL" \
   --api-key "$BENCHMARK_API_KEY" \
+  --gwt-mode controlled \
   --timeout 60 \
   --results-dir tests/benchmarks/results
 ```
+
+`--gwt-mode tools` lets the model control GWT tool calls. `--gwt-mode controlled`
+uses deterministic benchmark specialists to set goals, admit query evidence,
+run broadcast, and produce the final evidence-backed answer.
 
 `--api-path` and `--api-base` are combined deterministically; no hidden path mutation is done in tests.
 If your RunPod URL already ends with `/v1`, keep `BENCHMARK_API_PATH=/v1`; the loader will not duplicate the path.
