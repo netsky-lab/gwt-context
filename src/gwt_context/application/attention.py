@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from gwt_context.application.broadcast_bus import (
     BroadcastBus,
+    BroadcastBusResult,
     BroadcastContext,
+    BroadcastProposal,
     broadcast_bus_result_to_dict,
 )
 from gwt_context.application.structured import (
@@ -215,7 +217,13 @@ class AttentionController:
                     )
                 )
 
-            record = self._cycle.run()
+            record = self._cycle.run(
+                question=question,
+                evidence_plan=plan,
+                context_chunks=tuple(context_chunks),
+                metadata=task_metadata,
+                pass_number=pass_number,
+            )
             tool_call_count += 1
             completed_passes += 1
             broadcast_text = record.formatted_content
@@ -231,7 +239,8 @@ class AttentionController:
                     },
                 )
             )
-            if self._broadcast_bus is not None:
+            bus_result = self._last_bus_result_from_cycle()
+            if bus_result is None and self._broadcast_bus is not None:
                 bus_result = self._broadcast_bus.publish(
                     BroadcastContext(
                         question=question,
@@ -243,6 +252,7 @@ class AttentionController:
                         metadata=task_metadata,
                     )
                 )
+            if bus_result is not None:
                 steps.append(
                     AttentionStep(
                         phase="broadcast_bus",
@@ -250,36 +260,31 @@ class AttentionController:
                         payload=broadcast_bus_result_to_dict(bus_result),
                     )
                 )
+                resolved_by_bus = False
                 for proposal in bus_result.accepted:
-                    if proposal.kind != "query_memory":
-                        continue
-                    query = _metadata_text(proposal.payload, "query")
-                    if not query or query.lower() in seen_queries:
-                        continue
-                    seen_queries.add(query.lower())
-                    items = self._ingestion.query_similar(query=query, k=self._query_k)
-                    tool_call_count += 1
-                    query_ids = []
-                    for item in items:
-                        query_ids.append(item.id)
-                        if self._admit_query_results:
-                            self._cycle.enqueue_for_competition(item)
-                            admitted_ids.append(item.id)
-                    steps.append(
-                        AttentionStep(
-                            phase="broadcast_bus_tool",
-                            name="subscriber_query",
-                            payload={
-                                "pass": pass_number,
-                                "subscriber": proposal.subscriber,
-                                "query": query,
-                                "matched_ids": query_ids,
-                                "admitted_ids": list(query_ids)
-                                if self._admit_query_results
-                                else [],
-                            },
+                    if proposal.kind == "query_memory":
+                        if resolved_by_bus or plan.metadata.get("deterministic_answer"):
+                            continue
+                        query_count, query_admitted = self._apply_query_proposal(
+                            proposal,
+                            seen_queries,
+                            admitted_ids,
+                            pass_number,
+                            steps,
                         )
-                    )
+                        tool_call_count += query_count
+                        if query_admitted:
+                            continue
+                    elif proposal.kind == "resolve_answer":
+                        plan = _plan_with_resolved_answer(plan, proposal)
+                        resolved_by_bus = True
+                        steps.append(_proposal_step(pass_number, proposal, "subscriber_resolve"))
+                    elif proposal.kind == "flag_contradiction":
+                        plan = _plan_with_metadata_flag(plan, "contradiction", proposal.payload)
+                        steps.append(_proposal_step(pass_number, proposal, "subscriber_flag"))
+                    elif proposal.kind == "ask_followup":
+                        plan = _plan_with_metadata_flag(plan, "followup", proposal.payload)
+                        steps.append(_proposal_step(pass_number, proposal, "subscriber_followup"))
 
         return AttentionRun(
             evidence=plan,
@@ -289,6 +294,49 @@ class AttentionController:
             steps=tuple(steps),
             pass_count=completed_passes,
         )
+
+    def _last_bus_result_from_cycle(self) -> Any | None:
+        getter = getattr(self._cycle, "get_last_broadcast_bus_result", None)
+        if getter is None:
+            return None
+        result = getter()
+        return result if isinstance(result, BroadcastBusResult) else None
+
+    def _apply_query_proposal(
+        self,
+        proposal: BroadcastProposal,
+        seen_queries: set[str],
+        admitted_ids: list[str],
+        pass_number: int,
+        steps: list[AttentionStep],
+    ) -> tuple[int, bool]:
+        query = _metadata_text(proposal.payload, "query")
+        if not query or query.lower() in seen_queries:
+            return 0, False
+        seen_queries.add(query.lower())
+        items = self._ingestion.query_similar(query=query, k=self._query_k)
+        query_ids = []
+        for item in items:
+            query_ids.append(item.id)
+            if self._admit_query_results:
+                self._cycle.enqueue_for_competition(item)
+                admitted_ids.append(item.id)
+        steps.append(
+            AttentionStep(
+                phase="broadcast_bus_tool",
+                name="subscriber_query",
+                payload={
+                    "pass": pass_number,
+                    "subscriber": proposal.subscriber,
+                    "query": query,
+                    "matched_ids": query_ids,
+                    "admitted_ids": list(query_ids)
+                    if self._admit_query_results
+                    else [],
+                },
+            )
+        )
+        return 1, True
 
     def _resolve(
         self,
@@ -446,6 +494,64 @@ def attention_run_to_dict(question: str, run: AttentionRun) -> dict[str, Any]:
             for step in run.steps
         ],
     }
+
+
+def _plan_with_resolved_answer(plan: EvidencePlan, proposal: BroadcastProposal) -> EvidencePlan:
+    evidence = proposal.payload.get("evidence")
+    if not isinstance(evidence, Mapping):
+        return plan
+    answer = evidence.get("answer")
+    if not isinstance(answer, str) or not answer:
+        return plan
+    supporting = evidence.get("supporting_evidence", ())
+    supporting_evidence = (
+        tuple(str(item) for item in supporting)
+        if isinstance(supporting, Sequence) and not isinstance(supporting, str)
+        else ()
+    )
+    metadata = {
+        **dict(plan.metadata),
+        "deterministic_answer": True,
+        "broadcast_bus_resolution": {
+            "subscriber": proposal.subscriber,
+            "priority": proposal.priority,
+            "evidence": dict(evidence),
+        },
+    }
+    return replace(
+        plan,
+        answer=answer,
+        evidence=supporting_evidence or plan.evidence,
+        metadata=metadata,
+    )
+
+
+def _plan_with_metadata_flag(
+    plan: EvidencePlan,
+    key: str,
+    payload: Mapping[str, Any],
+) -> EvidencePlan:
+    flags = dict(plan.metadata.get("broadcast_bus_flags", {}))
+    flags[key] = dict(payload)
+    return replace(plan, metadata={**dict(plan.metadata), "broadcast_bus_flags": flags})
+
+
+def _proposal_step(
+    pass_number: int,
+    proposal: BroadcastProposal,
+    name: str,
+) -> AttentionStep:
+    return AttentionStep(
+        phase="broadcast_bus_tool",
+        name=name,
+        payload={
+            "pass": pass_number,
+            "subscriber": proposal.subscriber,
+            "kind": proposal.kind,
+            "priority": proposal.priority,
+            "payload": dict(proposal.payload),
+        },
+    )
 
 
 def extract_question_keywords(question: str, limit: int = 8) -> list[str]:

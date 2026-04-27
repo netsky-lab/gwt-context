@@ -329,6 +329,51 @@ def test_attention_controller_runs_broadcast_subscribers_after_broadcast() -> No
     assert "subscriber_query" in [step.name for step in result.steps]
 
 
+def test_attention_controller_applies_resolve_answer_proposal() -> None:
+    cycle = Mock()
+    cycle.set_goal = Mock(return_value=Goal(id="goal-1", description="Q"))
+    cycle.enqueue_for_competition = Mock()
+    cycle.run = Mock(
+        return_value=SimpleNamespace(
+            id="broadcast-1",
+            formatted_content="collection summary",
+            admitted_ids=[],
+            evicted_ids=[],
+        )
+    )
+    ingestion = Mock()
+    ingestion.query_similar = Mock(return_value=[])
+
+    class ResolveSubscriber:
+        name = "resolve"
+
+        def propose(self, _context):  # type: ignore[no-untyped-def]
+            return (
+                BroadcastProposal(
+                    subscriber=self.name,
+                    kind="resolve_answer",
+                    priority=0.95,
+                    rationale="exact",
+                    payload={
+                        "evidence": {
+                            "answer": "42",
+                            "supporting_evidence": ["answer=42"],
+                        }
+                    },
+                ),
+            )
+
+    result = AttentionController(
+        cycle,
+        ingestion,
+        broadcast_bus=BroadcastBus([ResolveSubscriber()]),
+    ).run("Q")
+
+    assert result.evidence.answer == "42"
+    assert result.evidence.metadata["deterministic_answer"] is True
+    assert "subscriber_resolve" in [step.name for step in result.steps]
+
+
 def _employee_record(
     name: str,
     *,

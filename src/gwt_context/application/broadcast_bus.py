@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from gwt_context.application.structured import (
@@ -55,6 +55,7 @@ class BroadcastBusResult:
     broadcast_id: str
     proposals: tuple[BroadcastProposal, ...]
     accepted: tuple[BroadcastProposal, ...]
+    inhibited: tuple[BroadcastProposal, ...] = ()
 
 
 class BroadcastBus:
@@ -66,10 +67,13 @@ class BroadcastBus:
         *,
         max_accepted: int = 4,
         threshold: float = 0.5,
+        repetition_penalty: float = 0.2,
     ) -> None:
         self._subscribers = tuple(subscribers)
         self._max_accepted = max_accepted
         self._threshold = threshold
+        self._repetition_penalty = repetition_penalty
+        self._accepted_counts: dict[tuple[str, str], int] = {}
 
     @property
     def subscribers(self) -> tuple[BroadcastSubscriber, ...]:
@@ -81,11 +85,55 @@ class BroadcastBus:
         proposals: list[BroadcastProposal] = []
         for subscriber in self._subscribers:
             proposals.extend(subscriber.propose(context))
-        accepted = _arbitrate(proposals, self._threshold, self._max_accepted)
+        accepted, inhibited = self._arbitrate(proposals)
+        for proposal in accepted:
+            key = _proposal_key(proposal)
+            self._accepted_counts[key] = self._accepted_counts.get(key, 0) + 1
         return BroadcastBusResult(
             broadcast_id=context.broadcast_id,
             proposals=tuple(proposals),
             accepted=tuple(accepted),
+            inhibited=tuple(inhibited),
+        )
+
+    def _arbitrate(
+        self,
+        proposals: Sequence[BroadcastProposal],
+    ) -> tuple[list[BroadcastProposal], list[BroadcastProposal]]:
+        accepted: list[BroadcastProposal] = []
+        inhibited: list[BroadcastProposal] = []
+        seen_keys: set[tuple[str, str]] = set()
+        adjusted = [self._apply_repetition_inhibition(proposal) for proposal in proposals]
+        for proposal in sorted(adjusted, key=lambda item: item.priority, reverse=True):
+            key = _proposal_key(proposal)
+            if proposal.kind == "query_memory" and _has_resolved_answer(accepted):
+                inhibited.append(proposal)
+                continue
+            if proposal.priority < self._threshold:
+                inhibited.append(proposal)
+                continue
+            if key in seen_keys:
+                inhibited.append(proposal)
+                continue
+            accepted.append(proposal)
+            seen_keys.add(key)
+            if len(accepted) >= self._max_accepted:
+                inhibited.extend(adjusted_proposal for adjusted_proposal in adjusted if (
+                    adjusted_proposal not in accepted
+                    and adjusted_proposal not in inhibited
+                ))
+                break
+        return accepted, inhibited
+
+    def _apply_repetition_inhibition(self, proposal: BroadcastProposal) -> BroadcastProposal:
+        count = self._accepted_counts.get(_proposal_key(proposal), 0)
+        if count == 0:
+            return proposal
+        priority = max(0.0, proposal.priority - (self._repetition_penalty * count))
+        return replace(
+            proposal,
+            priority=priority,
+            rationale=f"{proposal.rationale} Repeated proposal inhibited x{count}.",
         )
 
 
@@ -102,11 +150,16 @@ class StructuredResolverSubscriber:
             evidence = resolve_relation_evidence(context.question, context.context_chunks)
         if evidence is None:
             return ()
+        priority = 0.72
+        if evidence.answer:
+            priority += 0.18
+        if evidence.supporting_evidence:
+            priority += min(0.08, len(evidence.supporting_evidence) * 0.02)
         return (
             BroadcastProposal(
                 subscriber=self.name,
                 kind="resolve_answer",
-                priority=0.95,
+                priority=min(priority, 0.98),
                 rationale="Exact structured evidence matched the broadcast question.",
                 payload={"evidence": collection_evidence_to_dict(evidence)},
             ),
@@ -119,15 +172,20 @@ class SemanticRecallSubscriber:
     name = "semantic_recall"
 
     def propose(self, context: BroadcastContext) -> tuple[BroadcastProposal, ...]:
-        entities = _broadcast_entities(context.broadcast_text)
+        broadcast_content = _broadcast_content(context.broadcast_text)
+        entities = _broadcast_entities(broadcast_content)
         if not entities:
             return ()
         query = " ".join([entities[0], *_question_terms(context.question)[:3]])
+        overlap = set(_question_terms(context.question)) & set(
+            _question_terms(broadcast_content)
+        )
+        priority = 0.52 + min(0.18, len(overlap) * 0.04)
         return (
             BroadcastProposal(
                 subscriber=self.name,
                 kind="query_memory",
-                priority=0.65,
+                priority=priority,
                 rationale="Broadcast exposed an entity that may activate related memory.",
                 payload={"query": query},
             ),
@@ -140,15 +198,21 @@ class RelationContinuationSubscriber:
     name = "relation_continuation"
 
     def propose(self, context: BroadcastContext) -> tuple[BroadcastProposal, ...]:
-        relation = _relation_term(context.question, context.broadcast_text)
-        entities = _broadcast_entities(context.broadcast_text)
+        broadcast_content = _broadcast_content(context.broadcast_text)
+        relation = _relation_term(context.question, broadcast_content)
+        entities = _broadcast_entities(broadcast_content)
         if not relation or not entities:
             return ()
+        priority = 0.68
+        if relation.lower() in context.question.lower():
+            priority += 0.08
+        if len(entities) > 1:
+            priority += 0.04
         return (
             BroadcastProposal(
                 subscriber=self.name,
                 kind="query_memory",
-                priority=0.78,
+                priority=min(priority, 0.86),
                 rationale="Broadcast contains a relation chain that may need continuation.",
                 payload={"query": f"{entities[-1]} {relation}"},
             ),
@@ -160,18 +224,24 @@ class ContradictionCheckerSubscriber:
 
     name = "contradiction_checker"
 
+    def __init__(self, markers: Sequence[str] = ()) -> None:
+        self._markers = tuple(marker.lower().strip() for marker in markers if marker.strip())
+
     def propose(self, context: BroadcastContext) -> tuple[BroadcastProposal, ...]:
+        markers = _metadata_markers(context.metadata, self._markers)
+        if not markers:
+            return ()
         lowered = context.broadcast_text.lower()
-        markers = ("contradiction", "conflict", "disagrees with", "not equal")
         if not any(marker in lowered for marker in markers):
             return ()
+        matched_markers = [marker for marker in markers if marker in lowered]
         return (
             BroadcastProposal(
                 subscriber=self.name,
                 kind="flag_contradiction",
-                priority=0.85,
+                priority=min(0.74 + len(matched_markers) * 0.05, 0.92),
                 rationale="Broadcast contains explicit contradiction markers.",
-                payload={"markers": [marker for marker in markers if marker in lowered]},
+                payload={"markers": matched_markers},
             ),
         )
 
@@ -214,6 +284,7 @@ def broadcast_bus_result_to_dict(result: BroadcastBusResult) -> dict[str, Any]:
         "broadcast_id": result.broadcast_id,
         "proposals": [_proposal_to_dict(proposal) for proposal in result.proposals],
         "accepted": [_proposal_to_dict(proposal) for proposal in result.accepted],
+        "inhibited": [_proposal_to_dict(proposal) for proposal in result.inhibited],
     }
 
 
@@ -249,24 +320,35 @@ def _evidence_plan_to_dict(plan: Any) -> dict[str, Any]:
     }
 
 
-def _arbitrate(
-    proposals: Sequence[BroadcastProposal],
-    threshold: float,
-    max_accepted: int,
-) -> list[BroadcastProposal]:
-    accepted: list[BroadcastProposal] = []
-    seen_keys: set[tuple[str, str]] = set()
-    for proposal in sorted(proposals, key=lambda item: item.priority, reverse=True):
-        if proposal.priority < threshold:
+def _proposal_key(proposal: BroadcastProposal) -> tuple[str, str]:
+    evidence = proposal.payload.get("evidence")
+    answer = evidence.get("answer") if isinstance(evidence, Mapping) else None
+    key = proposal.payload.get("query") or answer or proposal.payload.get("question")
+    return (proposal.kind, str(key or proposal.subscriber).lower())
+
+
+def _has_resolved_answer(proposals: Sequence[BroadcastProposal]) -> bool:
+    for proposal in proposals:
+        if proposal.kind != "resolve_answer":
             continue
-        key = (proposal.kind, str(proposal.payload.get("query") or proposal.payload.get("answer")))
-        if key in seen_keys:
-            continue
-        accepted.append(proposal)
-        seen_keys.add(key)
-        if len(accepted) >= max_accepted:
-            break
-    return accepted
+        evidence = proposal.payload.get("evidence")
+        if isinstance(evidence, Mapping) and evidence.get("answer"):
+            return True
+    return False
+
+
+def _metadata_markers(
+    metadata: Mapping[str, Any],
+    defaults: Sequence[str],
+) -> tuple[str, ...]:
+    value = metadata.get("contradiction_markers", defaults)
+    if isinstance(value, str):
+        raw_markers: Sequence[object] = (value,)
+    elif isinstance(value, Sequence):
+        raw_markers = value
+    else:
+        raw_markers = defaults
+    return tuple(str(marker).lower().strip() for marker in raw_markers if str(marker).strip())
 
 
 def _question_terms(question: str) -> list[str]:
@@ -282,12 +364,51 @@ def _broadcast_entities(text: str) -> list[str]:
     return _dedupe(match.group(0).strip() for match in pattern.finditer(text))
 
 
+def _broadcast_content(text: str) -> str:
+    lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if (
+            not stripped
+            or stripped.startswith("[GOALS:")
+            or stripped.startswith("[ADMITTED:")
+            or stripped.startswith("[EVICTED:")
+            or stripped.startswith("===")
+        ):
+            continue
+        lines.append(re.sub(r"^\[slot:[^\]]+\]\s*", "", stripped))
+    return "\n".join(lines)
+
+
 def _relation_term(question: str, broadcast_text: str) -> str:
-    lowered = f"{question}\n{broadcast_text}".lower()
-    for relation in ("doctoral advisor", "worked with", "extended", "cites", "reports to"):
-        if relation in lowered:
-            return relation
+    for relation in _arrow_relations(broadcast_text):
+        return relation
+    possessive = re.findall(
+        r"'s\s+([a-z][a-z0-9_ -]{2,48}?)(?:'s|\?| was | is |$)",
+        question,
+    )
+    if possessive:
+        return " ".join(possessive[-1].split())
+    relation_question = re.search(
+        r"\b(?:relationship|relation|edge|link)\s+['\"]?([a-z][a-z0-9_ -]{2,48})",
+        question.lower(),
+    )
+    if relation_question:
+        return " ".join(relation_question.group(1).split())
     return ""
+
+
+def _arrow_relations(text: str) -> list[str]:
+    relations: list[str] = []
+    relations.extend(
+        match.strip()
+        for match in re.findall(r"-+([A-Za-z][A-Za-z0-9_ -]{1,48}?)-+>", text)
+    )
+    relations.extend(
+        match.strip()
+        for match in re.findall(r"->\s*([A-Za-z][A-Za-z0-9_ -]{1,48}?)\s*->", text)
+    )
+    return _dedupe(relations)
 
 
 def _dedupe(values: Iterable[str]) -> list[str]:

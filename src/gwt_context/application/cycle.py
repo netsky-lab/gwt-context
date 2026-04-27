@@ -6,6 +6,15 @@ This is the core "business logic" of the system.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+from gwt_context.application.broadcast_bus import (
+    BroadcastBus,
+    BroadcastBusResult,
+    BroadcastContext,
+    broadcast_bus_result_to_dict,
+)
 from gwt_context.domain.broadcast import BroadcastAssembler
 from gwt_context.domain.competition import CompetitionEngine
 from gwt_context.domain.models import (
@@ -97,6 +106,7 @@ class SelectionBroadcastCycle:
         store: MemoryRepositoryPort,
         vector_index: VectorSearchPort,
         goal_manager: GoalManagerPort,
+        broadcast_bus: BroadcastBus | None = None,
     ) -> None:
         self._ws = workspace
         self._comp = competition
@@ -105,6 +115,9 @@ class SelectionBroadcastCycle:
         self._store = store
         self._vi = vector_index
         self._gm = goal_manager
+        self._broadcast_bus = broadcast_bus
+        self._last_broadcast_bus_result: BroadcastBusResult | None = None
+        self._last_link_activations: tuple[str, ...] = ()
 
     @property
     def workspace(self) -> GlobalWorkspace:
@@ -132,6 +145,10 @@ class SelectionBroadcastCycle:
     def get_workspace_broadcast(self) -> str:
         """Return the current workspace broadcast text without running a cycle."""
         return self._ws.get_broadcast_text()
+
+    def get_last_broadcast_bus_result(self) -> BroadcastBusResult | None:
+        """Return the most recent broadcast-bus result, if configured."""
+        return self._last_broadcast_bus_result
 
     def enqueue_for_competition(self, item: MemoryItem) -> None:
         """Add an item to the preconscious buffer for the next cycle."""
@@ -233,6 +250,18 @@ class SelectionBroadcastCycle:
                 "buffer_size": self._buffer.size,
                 "workspace_count": self._ws.occupied_count,
                 "active_goals": len(self._gm.active_goals),
+                "last_link_activations": list(self._last_link_activations),
+            }
+        if normalized == "broadcast_bus":
+            return {
+                "target": "broadcast_bus",
+                "configured": self._broadcast_bus is not None,
+                "last_result": (
+                    broadcast_bus_result_to_dict(self._last_broadcast_bus_result)
+                    if self._last_broadcast_bus_result is not None
+                    else None
+                ),
+                "last_link_activations": list(self._last_link_activations),
             }
 
         return {"target": normalized, "status": "unknown", "error": "Unknown target"}
@@ -247,7 +276,15 @@ class SelectionBroadcastCycle:
             if source_id not in item.linked_ids:
                 item.linked_ids.append(source_id)
 
-    def run(self) -> BroadcastRecord:
+    def run(
+        self,
+        *,
+        question: str | None = None,
+        evidence_plan: Any = None,
+        context_chunks: Sequence[str] = (),
+        metadata: Mapping[str, Any] | None = None,
+        pass_number: int = 1,
+    ) -> BroadcastRecord:
         """Execute one full selection-broadcast cycle."""
         goals = self._gm.active_goals
 
@@ -256,7 +293,19 @@ class SelectionBroadcastCycle:
 
         if not candidates and not self._ws.items:
             # Nothing to compete with, return empty broadcast
-            return self._bc.assemble(self._ws, goals)
+            record = self._bc.assemble(self._ws, goals)
+            self._ws.record_broadcast(record)
+            self._store.save_broadcast(record)
+            self._last_link_activations = ()
+            self._publish_broadcast_bus(
+                record=record,
+                question=question,
+                evidence_plan=evidence_plan,
+                context_chunks=context_chunks,
+                metadata=metadata,
+                pass_number=pass_number,
+            )
+            return record
 
         # 2. Run competition
         result = self._comp.run_competition(
@@ -285,8 +334,63 @@ class SelectionBroadcastCycle:
         )
         self._ws.record_broadcast(record)
         self._store.save_broadcast(record)
+        self._last_link_activations = tuple(self._activate_workspace_links())
+        self._publish_broadcast_bus(
+            record=record,
+            question=question,
+            evidence_plan=evidence_plan,
+            context_chunks=context_chunks,
+            metadata=metadata,
+            pass_number=pass_number,
+        )
 
         return record
+
+    def _publish_broadcast_bus(
+        self,
+        *,
+        record: BroadcastRecord,
+        question: str | None,
+        evidence_plan: Any,
+        context_chunks: Sequence[str],
+        metadata: Mapping[str, Any] | None,
+        pass_number: int,
+    ) -> None:
+        if self._broadcast_bus is None:
+            self._last_broadcast_bus_result = None
+            return
+        active_goal = self._gm.active_goals[0].description if self._gm.active_goals else ""
+        bus_question = question or active_goal
+        chunks = tuple(context_chunks) or tuple(item.content for item in self._ws.items)
+        self._last_broadcast_bus_result = self._broadcast_bus.publish(
+            BroadcastContext(
+                question=bus_question,
+                broadcast_id=str(record.id),
+                broadcast_text=record.formatted_content,
+                pass_number=pass_number,
+                evidence_plan=evidence_plan,
+                context_chunks=chunks,
+                metadata=metadata or {},
+            )
+        )
+
+    def _activate_workspace_links(self) -> list[str]:
+        """Move linked long-term memories into preconscious state for the next cycle."""
+        activated: list[str] = []
+        seen_ids = {item.id for item in self._ws.items}
+        seen_ids.update(item.id for item in self._buffer.all_items())
+        for item in self._ws.items:
+            for linked_id in item.linked_ids:
+                if linked_id in seen_ids:
+                    continue
+                linked = self._store.get_item(linked_id)
+                if linked is None:
+                    continue
+                self._buffer.push(linked)
+                self._store.update_state(linked.id, ActivationState.PRECONSCIOUS)
+                activated.append(linked.id)
+                seen_ids.add(linked.id)
+        return activated
 
     def _gather_candidates(self, goals: list[Goal]) -> list[MemoryItem]:
         """Collect candidates from buffer and vector search."""

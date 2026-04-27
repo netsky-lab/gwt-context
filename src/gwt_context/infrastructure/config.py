@@ -24,6 +24,7 @@ class GWTConfig:
 
     # Competition
     goal_modulation_strength: float = 0.3
+    min_activation: float = 0.2
     specialist_weights: dict[str, float] = field(default_factory=lambda: {
         "relevance": 0.35,
         "recency": 0.20,
@@ -73,6 +74,7 @@ class GWTConfig:
             "GWT_WORKSPACE_CAPACITY": ("workspace_capacity", int),
             "GWT_BUFFER_SIZE": ("buffer_size", int),
             "GWT_GOAL_MODULATION": ("goal_modulation_strength", float),
+            "GWT_MIN_ACTIVATION": ("min_activation", float),
             "GWT_EMBEDDING_PROVIDER": ("embedding_provider", str),
             "GWT_EMBEDDING_MODEL": ("embedding_model", str),
             "GWT_EMBEDDING_DIM": ("embedding_dim", int),

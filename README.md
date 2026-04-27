@@ -122,11 +122,17 @@ When the goal changes, GoalLinkageSpecialist re-weights all links by relevance t
 
 `gwt_context.application.attention.AttentionController` provides a reusable path for deterministic selection: set the goal, resolve an evidence plan, query/admit matching memories, then broadcast. Production planning supports semantic lookup, exact structured collection evidence, relation-graph continuation, hybrid mode, and auto mode. The controller itself depends only on application ports.
 
-After a broadcast, a post-broadcast bus fans the same workspace event out to
-independent subscribers such as structured resolve, semantic recall, relation
-continuation, contradiction checking, and plan critique. Subscribers produce
-proposals; arbitration accepts bounded follow-up actions that are recorded in
-the attention trace.
+`SelectionBroadcastCycle` publishes each workspace broadcast to a subscriber
+bus. Structured resolve, semantic recall, relation continuation, contradiction
+checking, and plan critique subscribers read the same broadcast and return
+proposals. `gwt_attend` applies accepted proposals through public ports:
+follow-up memory queries, deterministic answer resolution, contradiction flags,
+and follow-up flags are recorded in the trace. Repeated proposals are inhibited
+across broadcasts.
+
+Conscious items also reactivate their `gwt_link` targets into the preconscious
+buffer for the next cycle, so recurrent attention can follow explicit memory
+links instead of only parsing names from rendered broadcast text.
 
 MCP clients can call `gwt_attend(question, keywords?, k?, planner?)` for this path without
 manually sequencing `gwt_set_goal`, `gwt_query(admit=true)`, and `gwt_broadcast`.
@@ -271,6 +277,7 @@ Environment variables:
 | `GWT_WORKSPACE_CAPACITY` | `7` | Max items in workspace |
 | `GWT_BUFFER_SIZE` | `50` | Preconscious buffer size |
 | `GWT_GOAL_MODULATION` | `0.3` | Goal boost strength (0-1) |
+| `GWT_MIN_ACTIVATION` | `0.2` | Ignition threshold for admitting new workspace candidates |
 | `GWT_EMBEDDING_PROVIDER` | `sentence-transformer` | `sentence-transformer` or deterministic local `hash` |
 | `GWT_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence transformer model |
 | `GWT_EMBEDDING_DIM` | `384` | Vector dimension for storage/search |

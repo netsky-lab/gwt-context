@@ -11,6 +11,7 @@ def test_gwt_config_loads_documented_environment_overrides(monkeypatch, tmp_path
     monkeypatch.setenv("GWT_WORKSPACE_CAPACITY", "5")
     monkeypatch.setenv("GWT_BUFFER_SIZE", "25")
     monkeypatch.setenv("GWT_GOAL_MODULATION", "0.4")
+    monkeypatch.setenv("GWT_MIN_ACTIVATION", "0.25")
     monkeypatch.setenv("GWT_EMBEDDING_PROVIDER", "hash")
     monkeypatch.setenv("GWT_EMBEDDING_MODEL", "hash")
     monkeypatch.setenv("GWT_EMBEDDING_DIM", "32")
@@ -25,6 +26,7 @@ def test_gwt_config_loads_documented_environment_overrides(monkeypatch, tmp_path
     assert config.workspace_capacity == 5
     assert config.buffer_size == 25
     assert config.goal_modulation_strength == 0.4
+    assert config.min_activation == 0.25
     assert config.embedding_provider == "hash"
     assert config.embedding_model == "hash"
     assert config.embedding_dim == 32

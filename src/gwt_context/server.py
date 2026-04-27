@@ -8,6 +8,7 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from gwt_context.application.attention import AttentionTraceStore
+from gwt_context.application.broadcast_bus import create_default_broadcast_bus
 from gwt_context.application.cycle import PreconsciousBuffer, SelectionBroadcastCycle
 from gwt_context.application.goal_manager import GoalManager
 from gwt_context.application.ingestion import IngestionPipeline
@@ -49,6 +50,7 @@ def create_server(config: GWTConfig | None = None) -> FastMCP:
     competition = CompetitionEngine(
         specialists=specialists,
         goal_modulation_strength=config.goal_modulation_strength,
+        min_activation=config.min_activation,
     )
     broadcast = BroadcastAssembler(max_tokens=config.max_broadcast_tokens)
 
@@ -68,6 +70,7 @@ def create_server(config: GWTConfig | None = None) -> FastMCP:
         store=store,
         vector_index=vector_index,
         goal_manager=goal_manager,
+        broadcast_bus=create_default_broadcast_bus(),
     )
     attention_trace = AttentionTraceStore()
 

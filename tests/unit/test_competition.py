@@ -35,6 +35,22 @@ class TestCompetitionEngine:
         assert len(result.winners) == 2
         assert len(result.evicted) == 0
 
+    def test_ignition_threshold_blocks_weak_candidates(self):
+        rel = RelevanceSpecialist()
+        rel.weight = 1.0
+        engine = CompetitionEngine(
+            specialists=[rel],
+            goal_modulation_strength=0.0,
+            min_activation=0.5,
+        )
+        ws = GlobalWorkspace(capacity=2)
+
+        result = engine.run_competition([_item("weak", [0, 0, 1])], [], ws)
+
+        assert result.winners == []
+        assert result.evicted == []
+        assert result.reason == "ignition_threshold"
+
     def test_evicts_weaker_items(self):
         # Use only relevance specialist for deterministic test
         rel = RelevanceSpecialist()

@@ -33,7 +33,8 @@ removed without updating tests and changelog.
   - Error keys: `error`, optional `supported_operations`
 - `gwt_trace_explain()`
   - Success keys: `status`, `question`, `planner`, `strategy`, `answer`,
-    `pass_count`, `tool_call_count`, `phases`, `explanation`, `trace`
+    `pass_count`, `tool_call_count`, `phases`, `broadcast_bus`,
+    `explanation`, `trace`
   - Empty keys: `status`, `message`
 - `gwt_evict(item_id)`
   - Delegates to `CyclePort.evict_workspace_item`; payload is cycle-defined.
@@ -41,6 +42,8 @@ removed without updating tests and changelog.
   - Delegates to `CyclePort.link_items`; payload is cycle-defined.
 - `gwt_inspect(target="workspace")`
   - Delegates to `CyclePort.inspect`; payload is target-specific read model.
+  - `target="broadcast_bus"` returns whether the cycle bus is configured, the
+    latest bus result, and linked-memory reactivations from the latest cycle.
 
 ## Evidence Plan Shape
 

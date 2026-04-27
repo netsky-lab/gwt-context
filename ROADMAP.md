@@ -12,9 +12,13 @@
 - CI covers `pytest`, `ruff`, `mypy`, `npm test`, and package build.
 - MCP response contracts are documented in `docs/mcp-tool-contracts.md` and
   guarded by snapshot-style unit tests.
-- `gwt_attend` includes a post-broadcast subscriber bus so broadcast is an
-  event consumed by independent proposal-generating processors, not only text
-  returned to one downstream model call.
+- `SelectionBroadcastCycle` includes a post-broadcast subscriber bus so
+  broadcast is an event consumed by independent proposal-generating processors,
+  not only text returned to one downstream model call. `gwt_attend` applies
+  accepted proposal kinds and records inhibited repeats in the trace.
+- Workspace admission has an ignition threshold through `GWT_MIN_ACTIVATION`.
+- Conscious workspace items reactivate explicit linked memories into the
+  preconscious buffer for recurrent link-following cycles.
 - Task onboarding constraint is required in both `AGENTS.md` and task planning:
   - read `ARCHITECTURE.md` first,
   - record in/out boundaries, forbidden imports, and forbidden coupling checks,
@@ -79,6 +83,8 @@
     trace explanation, and stats without external embedding downloads.
   - Attention traces include post-broadcast subscriber proposals and accepted
     downstream actions.
+  - `BENCHMARK_ATTEND_BROADCAST_BUS=0/1` can isolate bus contribution in attend
+    benchmark runs.
   - Multi-pass attention remains opt-in through `gwt_attend(passes=...)` and
     `BENCHMARK_ATTEND_PASSES` until benchmark evidence justifies a new default.
   - Structured collection tasks have explicit release gates in benchmark

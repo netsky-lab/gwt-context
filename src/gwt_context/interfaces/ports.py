@@ -8,6 +8,7 @@ should converge on these interfaces during P5/P6.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any, Protocol, runtime_checkable
 
 from gwt_context.domain.models import BroadcastRecord, Goal, MemoryItem, MemoryType
@@ -137,10 +138,21 @@ class IngestionPort(Protocol):
 class CyclePort(Protocol):
     """Orchestration operations exposed to the MCP boundary."""
 
-    def run(self) -> BroadcastRecord:
+    def run(
+        self,
+        *,
+        question: str | None = None,
+        evidence_plan: Any = None,
+        context_chunks: Sequence[str] = (),
+        metadata: Mapping[str, Any] | None = None,
+        pass_number: int = 1,
+    ) -> BroadcastRecord:
         ...
 
     def get_workspace_broadcast(self) -> str:
+        ...
+
+    def get_last_broadcast_bus_result(self) -> Any | None:
         ...
 
     def run_competition_dry(self, n_slots: int | None = None) -> Any:

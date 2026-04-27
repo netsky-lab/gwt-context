@@ -5,6 +5,7 @@ from gwt_context.application.broadcast_bus import (
     BroadcastBus,
     BroadcastContext,
     BroadcastProposal,
+    ContradictionCheckerSubscriber,
     RelationContinuationSubscriber,
     SemanticRecallSubscriber,
     StructuredResolverSubscriber,
@@ -78,3 +79,32 @@ def test_broadcast_bus_arbitrates_by_priority_and_threshold() -> None:
     assert result.accepted[0].subscriber == "relation_continuation"
     payload = broadcast_bus_result_to_dict(result)
     assert payload["accepted"][0]["payload"]["query"] == "Paper Beta cites"
+
+
+def test_broadcast_bus_inhibits_repeated_accepted_proposals() -> None:
+    bus = BroadcastBus([RelationContinuationSubscriber()], threshold=0.7)
+
+    first = bus.publish(_context())
+    second = bus.publish(_context())
+
+    assert first.accepted[0].payload["query"] == "Paper Beta cites"
+    assert second.accepted == ()
+    assert second.inhibited[0].payload["query"] == "Paper Beta cites"
+
+
+def test_broadcast_bus_inhibits_queries_after_exact_resolution() -> None:
+    bus = BroadcastBus([StructuredResolverSubscriber(), RelationContinuationSubscriber()])
+
+    result = bus.publish(_context())
+
+    assert [proposal.kind for proposal in result.accepted] == ["resolve_answer"]
+    assert any(proposal.kind == "query_memory" for proposal in result.inhibited)
+
+
+def test_contradiction_checker_requires_configured_markers() -> None:
+    context = _context(broadcast_text="Alpha disagrees with Beta")
+
+    assert ContradictionCheckerSubscriber().propose(context) == ()
+
+    proposals = ContradictionCheckerSubscriber(["disagrees with"]).propose(context)
+    assert proposals[0].kind == "flag_contradiction"

@@ -167,6 +167,7 @@ def test_server_builds_cycle_with_infrastructure_ports(monkeypatch, tmp_path) ->
         store: object,
         vector_index: object,
         goal_manager: object,
+        broadcast_bus: object | None = None,
     ) -> object:
         calls["cycle"] = {
             "store": store,
@@ -176,6 +177,7 @@ def test_server_builds_cycle_with_infrastructure_ports(monkeypatch, tmp_path) ->
             "buffer": buffer,
             "broadcast": broadcast,
             "competition": competition,
+            "broadcast_bus": broadcast_bus,
         }
         cycle = Mock()
         cycle.inspect = Mock(return_value={})
@@ -209,6 +211,7 @@ def test_server_builds_cycle_with_infrastructure_ports(monkeypatch, tmp_path) ->
     assert cycle["store"] is goal["store"]
     assert cycle["vector_index"] is ingestion["vector_index"]
     assert cycle["goal_manager"] is calls["goal_manager_instance"]
+    assert cycle["broadcast_bus"] is not None
 
     assert isinstance(cycle["store"], SQLiteMemoryStore)
     assert isinstance(cycle["vector_index"], VectorIndex)

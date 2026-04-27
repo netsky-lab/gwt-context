@@ -83,14 +83,18 @@
 - `GenericEvidenceResolver` supports semantic, structured collection, relation graph, hybrid, and auto planning without importing benchmark adapters.
 - Runtime collection/relation extraction lives in `application/structured.py` and has no MCP or infrastructure dependency.
 - The controller sets the active goal, runs resolver-selected queries, admits query matches into competition, then executes one broadcast cycle.
-- After each broadcast, `BroadcastBus` fans out the globally available
-  broadcast to independent subscribers. Subscribers return proposals such as
-  exact resolution, semantic recall, relation continuation, contradiction
-  flags, or follow-up requests.
+- `SelectionBroadcastCycle` owns post-broadcast fan-out. After each broadcast,
+  `BroadcastBus` makes the globally available content visible to independent
+  subscribers. Subscribers return proposals such as exact resolution, semantic
+  recall, relation continuation, contradiction flags, or follow-up requests.
 - Broadcast subscribers do not mutate workspace directly. The bus arbitrates
-  proposals and the controller applies accepted side effects through public
-  application ports, such as `IngestionPort.query_similar` plus
-  `CyclePort.enqueue_for_competition`.
+  proposals and records inhibited repeats. `AttentionController` applies
+  accepted side effects through public application ports, such as
+  `IngestionPort.query_similar` plus `CyclePort.enqueue_for_competition`, or by
+  updating its deterministic evidence plan for `resolve_answer` proposals.
+- Conscious workspace items reactivate explicit `linked_ids` into the
+  preconscious buffer for the next cycle through `MemoryRepositoryPort`, keeping
+  recurrent link-following inside application boundaries.
 - Benchmark resolvers are adapters under `tests/benchmarks/controlled_rules.py`; production MCP handlers do not import benchmark code.
 
 ### 3) Explicit key data path
@@ -141,6 +145,7 @@ From `src/gwt_context/infrastructure/config.py` and `.env` loading:
 - `GWT_WORKSPACE_CAPACITY`
 - `GWT_BUFFER_SIZE`
 - `GWT_GOAL_MODULATION`
+- `GWT_MIN_ACTIVATION`
 - `GWT_EMBEDDING_PROVIDER`
 - `GWT_EMBEDDING_MODEL`
 - `GWT_EMBEDDING_DIM`

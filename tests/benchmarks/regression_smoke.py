@@ -37,7 +37,7 @@ class SmokeCycle:
     def enqueue_for_competition(self, item: MemoryItem) -> None:
         self.admitted.append(item)
 
-    def run(self) -> Any:
+    def run(self, **_kwargs: Any) -> Any:
         content = "\n".join(item.content for item in self.admitted[:7])
         return type(
             "SmokeRecord",
@@ -49,6 +49,9 @@ class SmokeCycle:
                 "evicted_ids": [],
             },
         )()
+
+    def get_last_broadcast_bus_result(self) -> None:
+        return None
 
 
 class SmokeIngestion:

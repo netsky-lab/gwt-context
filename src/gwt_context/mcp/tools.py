@@ -17,7 +17,6 @@ from gwt_context.application.attention import (
     evidence_plan_to_dict,
     supported_planners,
 )
-from gwt_context.application.broadcast_bus import create_default_broadcast_bus
 from gwt_context.application.structured import RuntimeMemoryIndex, StructuredRecord
 from gwt_context.domain.models import MemoryType
 from gwt_context.interfaces.ports import CyclePort, IngestionPort
@@ -239,7 +238,6 @@ def register_tools(
             resolvers=[GenericEvidenceResolver(planner=normalized_planner)],
             query_k=k,
             admit_query_results=admit,
-            broadcast_bus=create_default_broadcast_bus(),
         )
         run = controller.run(
             question=question,
@@ -401,6 +399,7 @@ def register_tools(
         assert trace is not None
         evidence = trace["evidence_plan"]
         phases = [step["name"] for step in trace["trace"]]
+        bus_summary = _broadcast_bus_summary(trace["trace"])
         return {
             "status": "ok",
             "question": trace["question"],
@@ -410,6 +409,7 @@ def register_tools(
             "pass_count": trace["pass_count"],
             "tool_call_count": trace["tool_call_count"],
             "phases": phases,
+            "broadcast_bus": bus_summary,
             "explanation": (
                 "Attention set the goal, resolved an evidence plan, admitted any required "
                 "evidence, then ran broadcast passes."
@@ -505,4 +505,33 @@ def _collection_query_payload(
         ],
         "supporting_evidence": [record.raw for record in records],
         "metadata": metadata,
+    }
+
+
+def _broadcast_bus_summary(trace_steps: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    proposal_count = 0
+    accepted_count = 0
+    inhibited_count = 0
+    executed_actions: list[str] = []
+    subscribers: set[str] = set()
+    for step in trace_steps:
+        if step.get("phase") == "broadcast_bus":
+            payload = step.get("payload", {})
+            proposals = payload.get("proposals", []) if isinstance(payload, dict) else []
+            accepted = payload.get("accepted", []) if isinstance(payload, dict) else []
+            inhibited = payload.get("inhibited", []) if isinstance(payload, dict) else []
+            proposal_count += len(proposals)
+            accepted_count += len(accepted)
+            inhibited_count += len(inhibited)
+            for proposal in accepted:
+                if isinstance(proposal, dict):
+                    subscribers.add(str(proposal.get("subscriber", "")))
+        if step.get("phase") == "broadcast_bus_tool":
+            executed_actions.append(str(step.get("name", "")))
+    return {
+        "proposal_count": proposal_count,
+        "accepted_count": accepted_count,
+        "inhibited_count": inhibited_count,
+        "accepted_subscribers": sorted(subscriber for subscriber in subscribers if subscriber),
+        "executed_actions": executed_actions,
     }

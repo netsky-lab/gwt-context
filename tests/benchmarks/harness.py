@@ -27,6 +27,7 @@ from gwt_context.application.attention import (
     evidence_plan_to_dict,
     extract_question_keywords,
 )
+from gwt_context.application.broadcast_bus import create_default_broadcast_bus
 from gwt_context.application.cycle import PreconsciousBuffer, SelectionBroadcastCycle
 from gwt_context.application.goal_manager import GoalManager
 from gwt_context.application.ingestion import IngestionPipeline
@@ -357,6 +358,7 @@ class GWTSession:
         competition = CompetitionEngine(
             specialists=specialists,
             goal_modulation_strength=config.goal_modulation_strength,
+            min_activation=config.min_activation,
         )
         broadcast = BroadcastAssembler(max_tokens=config.max_broadcast_tokens)
         buffer = PreconsciousBuffer(max_size=config.buffer_size)
@@ -375,6 +377,9 @@ class GWTSession:
             store=self._store,
             vector_index=self._vi,
             goal_manager=goal_manager,
+            broadcast_bus=create_default_broadcast_bus()
+            if ATTEND_BROADCAST_BUS
+            else None,
         )
 
     def execute_tool(self, name: str, args: dict[str, Any]) -> str:
@@ -429,6 +434,7 @@ class GWTSession:
                 "admitted": record.admitted_ids,
                 "evicted": record.evicted_ids,
             }
+            trace["broadcast_bus"] = self._cycle.inspect("broadcast_bus")
             trace["workspace_after"] = self._cycle.inspect("workspace")
             return record.formatted_content, trace
 
@@ -531,6 +537,11 @@ Do not print tool-call markup as text. If you need a tool, use the official tool
 
 MAX_TOOL_ROUNDS = 10
 ATTEND_PASSES = max(1, int(os.getenv("BENCHMARK_ATTEND_PASSES", "1")))
+ATTEND_BROADCAST_BUS = os.getenv("BENCHMARK_ATTEND_BROADCAST_BUS", "1").strip() not in {
+    "0",
+    "false",
+    "False",
+}
 
 HYBRID_SYSTEM_PROMPT = """Answer from the supplied GWT workspace evidence only.
 

@@ -28,9 +28,11 @@ class CompetitionEngine:
         self,
         specialists: list[Specialist],
         goal_modulation_strength: float = 0.3,
+        min_activation: float = 0.2,
     ) -> None:
         self._specialists = specialists
         self._goal_mod = goal_modulation_strength
+        self._min_activation = min_activation
 
     @property
     def specialists(self) -> list[Specialist]:
@@ -95,8 +97,17 @@ class CompetitionEngine:
             ws_scores[ws_item.id] = score
             ws_item.activation_level = score
 
-        # Merge all items and keep top-N (N = workspace capacity)
-        all_items = workspace.items + external_candidates
+        # Ignition threshold gates admission. Weak candidates stay
+        # preconscious instead of filling empty slots by default.
+        eligible_external = [
+            item for item in external_candidates
+            if scores.get(item.id, 0.0) >= self._min_activation
+        ]
+
+        # Merge current workspace with eligible external items and keep top-N
+        # (N = workspace capacity). Existing workspace items are not evicted
+        # solely because they fall below the ignition threshold.
+        all_items = workspace.items + eligible_external
         all_scores = {**ws_scores, **scores}
         all_sorted = sorted(
             all_items,
@@ -118,6 +129,7 @@ class CompetitionEngine:
             winners=winners,
             evicted=evicted,
             scores=all_scores,
+            reason="ignition_threshold" if external_candidates and not eligible_external else "",
         )
 
     def _get_relevance_score(

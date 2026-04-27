@@ -28,6 +28,9 @@ cp .env.example .env
 - `BENCHMARK_MAX_RETRIES` (default `2`)
 - `BENCHMARK_CONCURRENCY` (default `1`) - number of independent benchmark tasks to run in parallel
 - `BENCHMARK_RESULTS_DIR` (default `tests/benchmarks/results`)
+- `BENCHMARK_ATTEND_PASSES` (default `1`) - maximum production attend passes
+- `BENCHMARK_ATTEND_BROADCAST_BUS` (default `1`) - set `0` to disable the
+  cycle-level subscriber bus for bus on/off comparisons
 
 ## Run commands
 
@@ -78,6 +81,7 @@ BENCHMARK_API_KEY=test
 BENCHMARK_API_PATH=/v1
 BENCHMARK_CONCURRENCY=16
 BENCHMARK_TIMEOUT_SECONDS=60
+BENCHMARK_ATTEND_BROADCAST_BUS=1
 ```
 
 ## Output behavior

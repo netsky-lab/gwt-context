@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from gwt_context.application.broadcast_bus import BroadcastBus, BroadcastProposal
 from gwt_context.application.cycle import PreconsciousBuffer, SelectionBroadcastCycle
 from gwt_context.application.goal_manager import GoalManager
 from gwt_context.application.ingestion import IngestionPipeline
@@ -195,6 +196,62 @@ class TestFullCycle:
 
         assert buffered_item.linked_ids == [workspace_item.id]
         assert workspace_item.linked_ids == [buffered_item.id]
+
+    def test_conscious_items_activate_linked_memories_for_next_cycle(self, system):
+        """Broadcast reentry moves linked long-term memories into preconscious."""
+        ing = system["ingestion"]
+        buf = system["buffer"]
+        cycle = system["cycle"]
+
+        anchor = ing.ingest("Ada is connected to Grace")
+        linked = ing.ingest("Grace is connected to Alan")
+        buf.push(anchor)
+        cycle.run()
+        cycle.link_items(anchor.id, linked.id)
+
+        cycle.run()
+        buffer_snapshot = cycle.inspect("buffer")
+
+        assert linked.id in {item["id"] for item in buffer_snapshot["items"]}
+        assert linked.id in cycle.inspect("stats")["last_link_activations"]
+
+    def test_cycle_publishes_broadcast_to_configured_bus(self, tmp_path):
+        """Plain broadcast path invokes subscribers at cycle level."""
+        store = SQLiteMemoryStore(db_path=tmp_path / "bus.db")
+        vi = VectorIndex(dim=4, path=tmp_path / "vectors.bin")
+        embedder = FakeEmbedder()
+
+        class StaticSubscriber:
+            name = "static"
+
+            def propose(self, _context):
+                return (
+                    BroadcastProposal(
+                        subscriber=self.name,
+                        kind="ask_followup",
+                        priority=0.9,
+                        rationale="unit",
+                        payload={"question": "Q"},
+                    ),
+                )
+
+        cycle = SelectionBroadcastCycle(
+            workspace=GlobalWorkspace(capacity=1),
+            competition=CompetitionEngine(specialists=create_default_specialists()),
+            broadcast=BroadcastAssembler(),
+            buffer=PreconsciousBuffer(max_size=10),
+            store=store,
+            vector_index=vi,
+            goal_manager=GoalManager(store=store, embedder=embedder),
+            broadcast_bus=BroadcastBus([StaticSubscriber()]),
+        )
+
+        cycle.run(question="Q")
+        bus_snapshot = cycle.inspect("broadcast_bus")
+
+        assert bus_snapshot["configured"] is True
+        assert bus_snapshot["last_result"]["accepted"][0]["subscriber"] == "static"
+        store.close()
 
     def test_multiple_broadcast_cycles(self, system):
         """Multiple broadcast cycles should work without errors."""
