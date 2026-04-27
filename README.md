@@ -181,6 +181,8 @@ python -m tests.benchmarks.longbench_pro
 
 See [`tests/benchmarks/README.md`](tests/benchmarks/README.md) for the full variable matrix, command examples, and reproducible output behavior.
 See [`docs/attention-controller.md`](docs/attention-controller.md) for the architecture note behind the controlled/hybrid design.
+See [`docs/release-readiness.md`](docs/release-readiness.md) for current release gates and Qwen smoke status.
+See [`docs/mcp-tool-contracts.md`](docs/mcp-tool-contracts.md) for stable MCP response shapes.
 
 Each benchmark runs GWT mode (with tools) and baseline mode (all context in prompt) for comparison.
 Results are saved as JSON in `BENCHMARK_RESULTS_DIR` (default `tests/benchmarks/results/`) using deterministic filenames:

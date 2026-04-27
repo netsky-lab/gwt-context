@@ -2,13 +2,16 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), and `pytest` baseline of 155 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), and `pytest` baseline of 157 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
   - `python -m tests.benchmarks.longbench_pro`
 - Local and benchmark smoke can use `GWT_EMBEDDING_PROVIDER=hash` to avoid
   embedding model downloads during readiness checks.
+- CI covers `pytest`, `ruff`, `mypy`, `npm test`, and package build.
+- MCP response contracts are documented in `docs/mcp-tool-contracts.md` and
+  guarded by snapshot-style unit tests.
 - Task onboarding constraint is required in both `AGENTS.md` and task planning:
   - read `ARCHITECTURE.md` first,
   - record in/out boundaries, forbidden imports, and forbidden coupling checks,
@@ -104,6 +107,7 @@
   - ROADMAP contains measurable gates for each retry-ready task.
   - CHANGELOG has a chronological entry for every behavior-affecting or governance-affecting change.
   - `test -f AGENTS.md && test -f ARCHITECTURE.md && test -f CHANGELOG.md && test -f ROADMAP.md` is enforced as pre-task check.
+  - CI remains green across Python checks, npm verification, and package build.
 
 ## Long-term
 

@@ -5,11 +5,7 @@ from gwt_context.server import create_server
 from gwt_context.smoke import run_smoke
 
 
-def _tool_call(mcp, name):  # type: ignore[no-untyped-def]
-    return mcp._tool_manager.get_tool(name).fn
-
-
-def test_create_server_can_run_tool_workflow_with_hash_embeddings(tmp_path) -> None:
+def _build_ready_mcp(tmp_path):
     config = GWTConfig(
         data_dir=str(tmp_path),
         embedding_provider="hash",
@@ -17,7 +13,15 @@ def test_create_server_can_run_tool_workflow_with_hash_embeddings(tmp_path) -> N
         embedding_dim=16,
         workspace_capacity=3,
     )
-    mcp = create_server(config)
+    return create_server(config)
+
+
+def _tool_call(mcp, name):  # type: ignore[no-untyped-def]
+    return mcp._tool_manager.get_tool(name).fn
+
+
+def test_create_server_can_run_tool_workflow_with_hash_embeddings(tmp_path) -> None:
+    mcp = _build_ready_mcp(tmp_path)
 
     stored = _tool_call(mcp, "gwt_store")("Paper Alpha -> cites -> Paper Beta")
     resolved = _tool_call(mcp, "gwt_resolve")(
