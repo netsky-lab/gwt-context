@@ -7,6 +7,7 @@ import pytest
 
 from gwt_context.application.attention import (
     AttentionController,
+    BusAdmissionPolicy,
     EvidencePlan,
     GenericEvidenceResolver,
 )
@@ -372,6 +373,46 @@ def test_attention_controller_applies_resolve_answer_proposal() -> None:
     assert result.evidence.answer == "42"
     assert result.evidence.metadata["deterministic_answer"] is True
     assert "subscriber_resolve" in [step.name for step in result.steps]
+
+
+def test_attention_controller_records_policy_skip_for_weak_query_proposal() -> None:
+    cycle = Mock()
+    cycle.set_goal = Mock(return_value=Goal(id="goal-1", description="Q"))
+    cycle.enqueue_for_competition = Mock()
+    cycle.run = Mock(
+        return_value=SimpleNamespace(
+            id="broadcast-1",
+            formatted_content="weak broadcast",
+            admitted_ids=[],
+            evicted_ids=[],
+        )
+    )
+    ingestion = Mock()
+    ingestion.query_similar = Mock(return_value=[])
+
+    class WeakQuerySubscriber:
+        name = "weak"
+
+        def propose(self, _context):  # type: ignore[no-untyped-def]
+            return (
+                BroadcastProposal(
+                    subscriber=self.name,
+                    kind="query_memory",
+                    priority=0.51,
+                    rationale="weak",
+                    payload={"query": "weak query"},
+                ),
+            )
+
+    result = AttentionController(
+        cycle,
+        ingestion,
+        broadcast_bus=BroadcastBus([WeakQuerySubscriber()], threshold=0.5),
+        bus_admission_policy=BusAdmissionPolicy(min_query_priority=0.8),
+    ).run("Q")
+
+    ingestion.query_similar.assert_called_once_with(query="Q", k=10)
+    assert "subscriber_policy_skip" in [step.name for step in result.steps]
 
 
 def _employee_record(

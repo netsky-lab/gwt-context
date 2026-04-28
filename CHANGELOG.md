@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-04-28
+
+- Added bus subscriber execution reports with timeout/error statuses, explicit
+  `BusAdmissionPolicy` decisions, structured record contradiction detection,
+  `gwt_bus_inspect`, bus on/off matrix helpers, trace bus summaries, and the
+  concrete GWT runtime contract documentation.
+
 ## 2026-04-27
 
 - Moved post-broadcast subscriber fan-out into `SelectionBroadcastCycle`, made

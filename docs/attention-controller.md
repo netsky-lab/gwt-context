@@ -32,6 +32,12 @@ The architecture now separates concerns:
   `query_memory`, `resolve_answer`, `flag_contradiction`, and `ask_followup`
   proposals are applied through public application ports or evidence-plan
   metadata, then recorded in the attention trace.
+- `BusAdmissionPolicy` records explicit apply/skip decisions for accepted
+  proposals. Deterministic answers suppress lower-priority recall by default,
+  and skipped proposals appear as `subscriber_policy_skip` trace steps.
+- Subscriber execution reports record `ok`, `timeout`, and `error` states so
+  the trace distinguishes architectural fan-out from successful processor
+  execution.
 - Repeated accepted proposal keys are inhibited on later broadcasts, and linked
   conscious items reactivate their linked long-term memories into preconscious
   state for the next cycle.
@@ -55,6 +61,9 @@ The architecture now separates concerns:
   semantic retrieval alone.
 - Broadcast quality is now measurable beyond retrieval: traces show subscriber
   proposals and which downstream actions were accepted after conscious access.
+- Bus contribution is measurable with
+  `python -m tests.benchmarks.bus_matrix --run --max-tasks N`, then
+  `python -m tests.benchmarks.bus_matrix --summarize <reports...>`.
 - Admission quality is gated by `GWT_MIN_ACTIVATION`: candidates below the
   ignition threshold remain preconscious instead of filling workspace slots just
   because capacity is available.

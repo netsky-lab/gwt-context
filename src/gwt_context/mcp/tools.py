@@ -418,6 +418,16 @@ def register_tools(
         }
 
     @mcp.tool()
+    def gwt_bus_inspect() -> dict[str, Any]:
+        """Inspect the cycle-level broadcast bus read model."""
+        snapshot = cycle.inspect(target="broadcast_bus")
+        return {
+            "status": "ok",
+            "broadcast_bus": snapshot,
+            "summary": _bus_snapshot_summary(snapshot),
+        }
+
+    @mcp.tool()
     def gwt_evict(item_id: str) -> dict[str, Any]:
         """Manually remove a specific item from the workspace.
 
@@ -534,4 +544,29 @@ def _broadcast_bus_summary(trace_steps: Sequence[dict[str, Any]]) -> dict[str, A
         "inhibited_count": inhibited_count,
         "accepted_subscribers": sorted(subscriber for subscriber in subscribers if subscriber),
         "executed_actions": executed_actions,
+    }
+
+
+def _bus_snapshot_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    last_result = snapshot.get("last_result")
+    if not isinstance(last_result, dict):
+        return {
+            "configured": bool(snapshot.get("configured")),
+            "proposal_count": 0,
+            "accepted_count": 0,
+            "inhibited_count": 0,
+            "subscriber_statuses": {},
+        }
+    statuses: dict[str, int] = {}
+    for report in last_result.get("subscriber_reports", []):
+        if not isinstance(report, dict):
+            continue
+        status = str(report.get("status", "unknown"))
+        statuses[status] = statuses.get(status, 0) + 1
+    return {
+        "configured": bool(snapshot.get("configured")),
+        "proposal_count": len(last_result.get("proposals", [])),
+        "accepted_count": len(last_result.get("accepted", [])),
+        "inhibited_count": len(last_result.get("inhibited", [])),
+        "subscriber_statuses": statuses,
     }

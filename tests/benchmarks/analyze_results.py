@@ -79,11 +79,13 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     )
     evidence_precision, evidence_recall = _evidence_summary(gwt_results)
     family_metrics = _family_metrics(gwt_results)
+    bus_metrics = _bus_metrics(gwt_results)
     return {
         "path": report.get("_path", ""),
         "benchmark_name": report.get("benchmark_name", ""),
         "model": report.get("model", ""),
         "gwt_mode": report.get("gwt_mode", "tools"),
+        "attend_broadcast_bus": bool(report.get("attend_broadcast_bus", False)),
         "task_count": len(gwt_results),
         "gwt_accuracy": _accuracy(gwt_results),
         "baseline_accuracy": _accuracy(baseline_results),
@@ -97,6 +99,12 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
         "avg_workspace_occupied": _average_workspace_occupied(gwt_results),
         "avg_evidence_precision": evidence_precision,
         "avg_evidence_recall": evidence_recall,
+        "bus_proposals": bus_metrics["proposals"],
+        "bus_accepted": bus_metrics["accepted"],
+        "bus_inhibited": bus_metrics["inhibited"],
+        "bus_timeouts": bus_metrics["timeouts"],
+        "bus_errors": bus_metrics["errors"],
+        "bus_tool_actions": bus_metrics["tool_actions"],
         "family_metrics": family_metrics,
         "buckets": buckets,
         "failure_buckets": dict(sorted(failure_buckets.items())),
@@ -144,23 +152,44 @@ def format_markdown(summaries: list[dict[str, Any]]) -> str:
                 "## Comparison Table",
                 "",
                 "| Benchmark | Mode | Tasks | GWT acc | Baseline acc | "
-                "Evidence recall | Evidence precision | Token delta |",
-                "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+                "Evidence recall | Evidence precision | Bus accepted/inhibited | Token delta |",
+                "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
             ]
         )
         for summary in summaries:
+            mode = summary["gwt_mode"]
+            if mode == "attend":
+                mode = f"{mode}/bus={'on' if summary['attend_broadcast_bus'] else 'off'}"
             lines.append(
                 "| "
                 f"{summary['benchmark_name']} | "
-                f"{summary['gwt_mode']} | "
+                f"{mode} | "
                 f"{summary['task_count']} | "
                 f"{summary['gwt_accuracy']:.1%} | "
                 f"{summary['baseline_accuracy']:.1%} | "
                 f"{summary['avg_evidence_recall']:.1%} | "
                 f"{summary['avg_evidence_precision']:.1%} | "
+                f"{summary['bus_accepted']} / {summary['bus_inhibited']} | "
                 f"{summary['gwt_token_reduction_pct']:+.1f}% |"
             )
         lines.append("")
+        bus_rows = summarize_bus_pairs(summaries)
+        if bus_rows:
+            lines.extend(
+                [
+                    "## Bus On/Off Deltas",
+                    "",
+                    "| Benchmark | Tasks | Accuracy delta | Tool-call delta | Accepted delta |",
+                    "| --- | ---: | ---: | ---: | ---: |",
+                ]
+            )
+            for row in bus_rows:
+                lines.append(
+                    f"| {row['benchmark_name']} | {row['task_count']} | "
+                    f"{row['accuracy_delta']:+.1%} | {row['tool_call_delta']:+.2f} | "
+                    f"{row['accepted_delta']:+.0f} |"
+                )
+            lines.append("")
         gate_rows = _release_gate_rows(summaries)
         if gate_rows:
             lines.extend(
@@ -197,6 +226,11 @@ def format_markdown(summaries: list[dict[str, Any]]) -> str:
                 f"- Avg workspace occupied: {summary['avg_workspace_occupied']:.2f}",
                 f"- Avg evidence precision: {summary['avg_evidence_precision']:.1%}",
                 f"- Avg evidence recall: {summary['avg_evidence_recall']:.1%}",
+                f"- Bus proposals/accepted/inhibited: {summary['bus_proposals']} / "
+                f"{summary['bus_accepted']} / {summary['bus_inhibited']}",
+                f"- Bus tool actions: {summary['bus_tool_actions']}",
+                f"- Bus subscriber timeouts/errors: {summary['bus_timeouts']} / "
+                f"{summary['bus_errors']}",
                 "",
                 "Outcome buckets:",
             ]
@@ -221,6 +255,38 @@ def format_markdown(summaries: list[dict[str, Any]]) -> str:
                 )
         lines.append("")
     return "\n".join(lines)
+
+
+def summarize_bus_pairs(summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Compare attend benchmark summaries that differ only by bus on/off state."""
+    grouped: dict[tuple[str, str, int], dict[bool, dict[str, Any]]] = defaultdict(dict)
+    for summary in summaries:
+        if summary.get("gwt_mode") != "attend":
+            continue
+        key = (
+            str(summary.get("benchmark_name", "")),
+            str(summary.get("model", "")),
+            int(summary.get("task_count", 0)),
+        )
+        grouped[key][bool(summary.get("attend_broadcast_bus"))] = summary
+
+    rows: list[dict[str, Any]] = []
+    for (_benchmark, _model, _count), pair in grouped.items():
+        if True not in pair or False not in pair:
+            continue
+        on = pair[True]
+        off = pair[False]
+        rows.append(
+            {
+                "benchmark_name": on["benchmark_name"],
+                "model": on["model"],
+                "task_count": on["task_count"],
+                "accuracy_delta": on["gwt_accuracy"] - off["gwt_accuracy"],
+                "tool_call_delta": on["avg_gwt_tool_calls"] - off["avg_gwt_tool_calls"],
+                "accepted_delta": on["bus_accepted"] - off["bus_accepted"],
+            }
+        )
+    return rows
 
 
 def _accuracy(results: list[dict[str, Any]]) -> float:
@@ -311,6 +377,45 @@ def _family_metrics(results: list[dict[str, Any]]) -> dict[str, dict[str, float]
             "task_count": float(len(family_results)),
         }
     return dict(sorted(metrics.items()))
+
+
+def _bus_metrics(results: list[dict[str, Any]]) -> dict[str, int]:
+    metrics = {
+        "proposals": 0,
+        "accepted": 0,
+        "inhibited": 0,
+        "timeouts": 0,
+        "errors": 0,
+        "tool_actions": 0,
+    }
+    for result in results:
+        for entry in result.get("trace", []):
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("phase") == "broadcast_bus":
+                payload = entry.get("result") or entry.get("payload") or {}
+                if not isinstance(payload, dict):
+                    continue
+                _add_bus_payload(metrics, payload)
+            elif entry.get("phase") == "broadcast_bus_tool":
+                metrics["tool_actions"] += 1
+            bus_snapshot = entry.get("broadcast_bus", {})
+            if isinstance(bus_snapshot, dict) and isinstance(bus_snapshot.get("last_result"), dict):
+                _add_bus_payload(metrics, bus_snapshot["last_result"])
+    return metrics
+
+
+def _add_bus_payload(metrics: dict[str, int], payload: dict[str, Any]) -> None:
+    metrics["proposals"] += len(payload.get("proposals", []))
+    metrics["accepted"] += len(payload.get("accepted", []))
+    metrics["inhibited"] += len(payload.get("inhibited", []))
+    for report in payload.get("subscriber_reports", []):
+        if not isinstance(report, dict):
+            continue
+        if report.get("status") == "timeout":
+            metrics["timeouts"] += 1
+        if report.get("status") == "error":
+            metrics["errors"] += 1
 
 
 def _task_family(task_id: str) -> str:

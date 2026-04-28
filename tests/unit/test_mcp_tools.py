@@ -367,3 +367,27 @@ class TestBoundaryDelegation:
         assert result["status"] == "ok"
         assert result["planner"] == "semantic"
         assert result["strategy"] == "generic_semantic_query_planner"
+
+    def test_gwt_bus_inspect_delegates_to_cycle_read_model(self):
+        cycle = Mock()
+        cycle.inspect = Mock(
+            return_value={
+                "target": "broadcast_bus",
+                "configured": True,
+                "last_result": {
+                    "proposals": [{"subscriber": "s"}],
+                    "accepted": [{"subscriber": "s"}],
+                    "inhibited": [],
+                    "subscriber_reports": [{"subscriber": "s", "status": "ok"}],
+                },
+            }
+        )
+        ingestion = Mock()
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        result = _tool_call(mcp, "gwt_bus_inspect")()
+
+        cycle.inspect.assert_called_once_with(target="broadcast_bus")
+        assert result["status"] == "ok"
+        assert result["summary"]["accepted_count"] == 1
+        assert result["summary"]["subscriber_statuses"] == {"ok": 1}

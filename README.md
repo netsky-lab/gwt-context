@@ -134,9 +134,14 @@ Conscious items also reactivate their `gwt_link` targets into the preconscious
 buffer for the next cycle, so recurrent attention can follow explicit memory
 links instead of only parsing names from rendered broadcast text.
 
+The strict state/admission rules are documented in
+[`docs/gwt-runtime-contracts.md`](docs/gwt-runtime-contracts.md).
+
 MCP clients can call `gwt_attend(question, keywords?, k?, planner?)` for this path without
 manually sequencing `gwt_set_goal`, `gwt_query(admit=true)`, and `gwt_broadcast`.
 They can also call `gwt_resolve` or `gwt_collection_query` when they need an exact runtime answer without a broadcast. The most recent attention trace is available at `gwt://attention/last` and summarized by `gwt_trace_explain`.
+`gwt_bus_inspect` exposes the latest cycle-level bus result, including
+subscriber statuses and accepted/inhibited proposal counts.
 
 ## Architecture
 

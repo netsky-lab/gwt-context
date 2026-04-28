@@ -36,6 +36,10 @@ removed without updating tests and changelog.
     `pass_count`, `tool_call_count`, `phases`, `broadcast_bus`,
     `explanation`, `trace`
   - Empty keys: `status`, `message`
+- `gwt_bus_inspect()`
+  - Success keys: `status`, `broadcast_bus`, `summary`
+  - `summary` includes proposal, accepted, inhibited, and subscriber status
+    counts from the latest cycle-level bus read model.
 - `gwt_evict(item_id)`
   - Delegates to `CyclePort.evict_workspace_item`; payload is cycle-defined.
 - `gwt_link(source_id, target_id)`

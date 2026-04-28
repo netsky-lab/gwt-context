@@ -16,9 +16,14 @@
   broadcast is an event consumed by independent proposal-generating processors,
   not only text returned to one downstream model call. `gwt_attend` applies
   accepted proposal kinds and records inhibited repeats in the trace.
+- Broadcast subscribers now produce execution reports with timeout/error
+  statuses, and bus admission decisions are governed by an explicit
+  `BusAdmissionPolicy`.
 - Workspace admission has an ignition threshold through `GWT_MIN_ACTIVATION`.
 - Conscious workspace items reactivate explicit linked memories into the
   preconscious buffer for recurrent link-following cycles.
+- `docs/gwt-runtime-contracts.md` records the concrete preconscious,
+  conscious, bus, and admission contracts.
 - Task onboarding constraint is required in both `AGENTS.md` and task planning:
   - read `ARCHITECTURE.md` first,
   - record in/out boundaries, forbidden imports, and forbidden coupling checks,
@@ -85,6 +90,8 @@
     downstream actions.
   - `BENCHMARK_ATTEND_BROADCAST_BUS=0/1` can isolate bus contribution in attend
     benchmark runs.
+  - `tests.benchmarks.bus_matrix` builds/runs/summarizes bounded bus on/off
+    evaluation commands.
   - Multi-pass attention remains opt-in through `gwt_attend(passes=...)` and
     `BENCHMARK_ATTEND_PASSES` until benchmark evidence justifies a new default.
   - Structured collection tasks have explicit release gates in benchmark

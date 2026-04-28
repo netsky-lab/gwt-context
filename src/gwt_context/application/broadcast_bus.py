@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Iterable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from gwt_context.application.structured import (
     collection_evidence_to_dict,
+    parse_record,
     resolve_collection_evidence,
     resolve_relation_evidence,
 )
@@ -38,6 +41,17 @@ class BroadcastProposal:
     payload: Mapping[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class SubscriberReport:
+    """Execution report for one independent subscriber loop."""
+
+    subscriber: str
+    status: str
+    proposal_count: int = 0
+    elapsed_ms: float = 0.0
+    error: str = ""
+
+
 class BroadcastSubscriber(Protocol):
     """Processor that independently reacts to a globally broadcast workspace."""
 
@@ -56,6 +70,7 @@ class BroadcastBusResult:
     proposals: tuple[BroadcastProposal, ...]
     accepted: tuple[BroadcastProposal, ...]
     inhibited: tuple[BroadcastProposal, ...] = ()
+    subscriber_reports: tuple[SubscriberReport, ...] = ()
 
 
 class BroadcastBus:
@@ -68,11 +83,13 @@ class BroadcastBus:
         max_accepted: int = 4,
         threshold: float = 0.5,
         repetition_penalty: float = 0.2,
+        subscriber_timeout_seconds: float = 0.25,
     ) -> None:
         self._subscribers = tuple(subscribers)
         self._max_accepted = max_accepted
         self._threshold = threshold
         self._repetition_penalty = repetition_penalty
+        self._subscriber_timeout_seconds = subscriber_timeout_seconds
         self._accepted_counts: dict[tuple[str, str], int] = {}
 
     @property
@@ -82,9 +99,7 @@ class BroadcastBus:
 
     def publish(self, context: BroadcastContext) -> BroadcastBusResult:
         """Publish one broadcast event and return arbitrated proposals."""
-        proposals: list[BroadcastProposal] = []
-        for subscriber in self._subscribers:
-            proposals.extend(subscriber.propose(context))
+        proposals, reports = self._collect_proposals(context)
         accepted, inhibited = self._arbitrate(proposals)
         for proposal in accepted:
             key = _proposal_key(proposal)
@@ -94,7 +109,55 @@ class BroadcastBus:
             proposals=tuple(proposals),
             accepted=tuple(accepted),
             inhibited=tuple(inhibited),
+            subscriber_reports=tuple(reports),
         )
+
+    def _collect_proposals(
+        self,
+        context: BroadcastContext,
+    ) -> tuple[list[BroadcastProposal], list[SubscriberReport]]:
+        proposals: list[BroadcastProposal] = []
+        reports: list[SubscriberReport] = []
+        for subscriber in self._subscribers:
+            started = time.perf_counter()
+            executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix=f"gwt-{subscriber.name}",
+            )
+            future = executor.submit(subscriber.propose, context)
+            try:
+                subscriber_proposals = future.result(timeout=self._subscriber_timeout_seconds)
+            except TimeoutError:
+                future.cancel()
+                reports.append(
+                    SubscriberReport(
+                        subscriber=subscriber.name,
+                        status="timeout",
+                        elapsed_ms=_elapsed_ms(started),
+                    )
+                )
+            except Exception as exc:
+                reports.append(
+                    SubscriberReport(
+                        subscriber=subscriber.name,
+                        status="error",
+                        elapsed_ms=_elapsed_ms(started),
+                        error=str(exc),
+                    )
+                )
+            else:
+                proposals.extend(subscriber_proposals)
+                reports.append(
+                    SubscriberReport(
+                        subscriber=subscriber.name,
+                        status="ok",
+                        proposal_count=len(subscriber_proposals),
+                        elapsed_ms=_elapsed_ms(started),
+                    )
+                )
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
+        return proposals, reports
 
     def _arbitrate(
         self,
@@ -229,19 +292,19 @@ class ContradictionCheckerSubscriber:
 
     def propose(self, context: BroadcastContext) -> tuple[BroadcastProposal, ...]:
         markers = _metadata_markers(context.metadata, self._markers)
-        if not markers:
-            return ()
+        conflicts = _record_conflicts(context.context_chunks)
         lowered = context.broadcast_text.lower()
-        if not any(marker in lowered for marker in markers):
-            return ()
         matched_markers = [marker for marker in markers if marker in lowered]
+        if not matched_markers and not conflicts:
+            return ()
+        priority = 0.74 + len(matched_markers) * 0.04 + len(conflicts) * 0.06
         return (
             BroadcastProposal(
                 subscriber=self.name,
                 kind="flag_contradiction",
-                priority=min(0.74 + len(matched_markers) * 0.05, 0.92),
-                rationale="Broadcast contains explicit contradiction markers.",
-                payload={"markers": matched_markers},
+                priority=min(priority, 0.94),
+                rationale="Broadcast context contains contradiction evidence.",
+                payload={"markers": matched_markers, "conflicts": conflicts},
             ),
         )
 
@@ -285,6 +348,16 @@ def broadcast_bus_result_to_dict(result: BroadcastBusResult) -> dict[str, Any]:
         "proposals": [_proposal_to_dict(proposal) for proposal in result.proposals],
         "accepted": [_proposal_to_dict(proposal) for proposal in result.accepted],
         "inhibited": [_proposal_to_dict(proposal) for proposal in result.inhibited],
+        "subscriber_reports": [
+            {
+                "subscriber": report.subscriber,
+                "status": report.status,
+                "proposal_count": report.proposal_count,
+                "elapsed_ms": round(report.elapsed_ms, 3),
+                "error": report.error,
+            }
+            for report in result.subscriber_reports
+        ],
     }
 
 
@@ -349,6 +422,42 @@ def _metadata_markers(
     else:
         raw_markers = defaults
     return tuple(str(marker).lower().strip() for marker in raw_markers if str(marker).strip())
+
+
+def _record_conflicts(chunks: Sequence[str]) -> list[dict[str, Any]]:
+    values_by_record: dict[tuple[str, str], dict[str, set[str] | str]] = {}
+    for chunk in chunks:
+        record = parse_record(chunk)
+        if record is None:
+            continue
+        for field_name, value in record.fields.items():
+            if field_name in {"id", "name"}:
+                continue
+            key = (record.record_id, field_name)
+            entry = values_by_record.setdefault(
+                key,
+                {"values": set(), "record_id": record.record_id, "field": field_name},
+            )
+            values = entry["values"]
+            if isinstance(values, set):
+                values.add(str(value).lower())
+    conflicts: list[dict[str, Any]] = []
+    for entry in values_by_record.values():
+        values = entry["values"]
+        if not isinstance(values, set) or len(values) < 2:
+            continue
+        conflicts.append(
+            {
+                "record_id": entry["record_id"],
+                "field": entry["field"],
+                "values": sorted(values),
+            }
+        )
+    return conflicts
+
+
+def _elapsed_ms(started: float) -> float:
+    return (time.perf_counter() - started) * 1000
 
 
 def _question_terms(question: str) -> list[str]:

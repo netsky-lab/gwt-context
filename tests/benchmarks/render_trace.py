@@ -36,6 +36,8 @@ def render_report(report: dict[str, Any]) -> str:
             "details{border:1px solid #ddd;border-radius:6px;margin:12px 0;padding:10px}",
             "summary{cursor:pointer;font-weight:700}",
             "pre{white-space:pre-wrap;background:#f6f8fa;padding:10px;border-radius:6px}",
+            "table{border-collapse:collapse;width:100%;margin:8px 0}",
+            "td,th{border:1px solid #ddd;padding:6px;text-align:left}",
             ".ok{color:#177245}.bad{color:#b42318}.meta{color:#555}",
             "</style>",
             "</head>",
@@ -80,6 +82,7 @@ def _render_result(result: dict[str, Any]) -> str:
     status_class = "ok" if result.get("correct") else "bad"
     status = "OK" if result.get("correct") else "WRONG"
     trace_html = "\n".join(_render_trace_entry(entry) for entry in result.get("trace", []))
+    bus_html = _render_bus_summary(result)
     workspace = json.dumps(result.get("workspace_snapshot", {}), indent=2)
     return "\n".join(
         [
@@ -96,10 +99,55 @@ def _render_result(result: dict[str, Any]) -> str:
             "<h3>Raw answer</h3>",
             f"<pre>{html.escape(str(result.get('raw_answer', '')))}</pre>",
             "<h3>Trace</h3>",
+            bus_html,
             trace_html,
             "<h3>Workspace snapshot</h3>",
             f"<pre>{html.escape(workspace)}</pre>",
             "</details>",
+        ]
+    )
+
+
+def _render_bus_summary(result: dict[str, Any]) -> str:
+    proposals = accepted = inhibited = actions = 0
+    reports: list[dict[str, Any]] = []
+    for entry in result.get("trace", []):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("phase") == "broadcast_bus":
+            payload = entry.get("result", {})
+            if isinstance(payload, dict):
+                proposals += len(payload.get("proposals", []))
+                accepted += len(payload.get("accepted", []))
+                inhibited += len(payload.get("inhibited", []))
+                reports.extend(
+                    report for report in payload.get("subscriber_reports", [])
+                    if isinstance(report, dict)
+                )
+        if entry.get("phase") == "broadcast_bus_tool":
+            actions += 1
+    if proposals == accepted == inhibited == actions == 0 and not reports:
+        return ""
+    rows = "".join(
+        "<tr>"
+        f"<td>{html.escape(str(report.get('subscriber', '')))}</td>"
+        f"<td>{html.escape(str(report.get('status', '')))}</td>"
+        f"<td>{html.escape(str(report.get('proposal_count', '')))}</td>"
+        f"<td>{html.escape(str(report.get('elapsed_ms', '')))}</td>"
+        "</tr>"
+        for report in reports
+    )
+    return "\n".join(
+        [
+            "<h3>Broadcast Bus</h3>",
+            (
+                f"<p class=\"meta\">proposals={proposals} accepted={accepted} "
+                f"inhibited={inhibited} actions={actions}</p>"
+            ),
+            "<table><thead><tr><th>Subscriber</th><th>Status</th><th>Proposals</th>"
+            "<th>ms</th></tr></thead><tbody>",
+            rows,
+            "</tbody></table>",
         ]
     )
 

@@ -63,6 +63,36 @@ class AttentionStep:
 
 
 @dataclass(frozen=True)
+class BusAdmissionPolicy:
+    """Policy for applying accepted broadcast-bus proposals."""
+
+    min_resolve_priority: float = 0.7
+    min_query_priority: float = 0.55
+    suppress_queries_after_resolution: bool = True
+
+    def decision(
+        self,
+        proposal: BroadcastProposal,
+        *,
+        resolved_answer: bool,
+        deterministic_answer: bool,
+    ) -> tuple[bool, str]:
+        """Return whether a proposal should produce a controller side effect."""
+        if proposal.kind == "resolve_answer":
+            accepted = proposal.priority >= self.min_resolve_priority
+            return accepted, "resolve_priority" if accepted else "resolve_below_threshold"
+        if proposal.kind == "query_memory":
+            if (
+                self.suppress_queries_after_resolution
+                and (resolved_answer or deterministic_answer)
+            ):
+                return False, "suppressed_after_resolution"
+            accepted = proposal.priority >= self.min_query_priority
+            return accepted, "query_priority" if accepted else "query_below_threshold"
+        return True, "metadata_only"
+
+
+@dataclass(frozen=True)
 class AttentionRun:
     """Result of a controller run."""
 
@@ -108,6 +138,7 @@ class AttentionController:
         query_k: int = 10,
         admit_query_results: bool = True,
         broadcast_bus: BroadcastBus | None = None,
+        bus_admission_policy: BusAdmissionPolicy | None = None,
     ) -> None:
         self._cycle = cycle
         self._ingestion = ingestion
@@ -115,6 +146,7 @@ class AttentionController:
         self._query_k = query_k
         self._admit_query_results = admit_query_results
         self._broadcast_bus = broadcast_bus
+        self._bus_admission_policy = bus_admission_policy or BusAdmissionPolicy()
 
     def run(
         self,
@@ -262,9 +294,22 @@ class AttentionController:
                 )
                 resolved_by_bus = False
                 for proposal in bus_result.accepted:
+                    should_apply, reason = self._bus_admission_policy.decision(
+                        proposal,
+                        resolved_answer=resolved_by_bus,
+                        deterministic_answer=bool(plan.metadata.get("deterministic_answer")),
+                    )
+                    if not should_apply:
+                        steps.append(
+                            _proposal_step(
+                                pass_number,
+                                proposal,
+                                "subscriber_policy_skip",
+                                {"reason": reason},
+                            )
+                        )
+                        continue
                     if proposal.kind == "query_memory":
-                        if resolved_by_bus or plan.metadata.get("deterministic_answer"):
-                            continue
                         query_count, query_admitted = self._apply_query_proposal(
                             proposal,
                             seen_queries,
@@ -278,13 +323,34 @@ class AttentionController:
                     elif proposal.kind == "resolve_answer":
                         plan = _plan_with_resolved_answer(plan, proposal)
                         resolved_by_bus = True
-                        steps.append(_proposal_step(pass_number, proposal, "subscriber_resolve"))
+                        steps.append(
+                            _proposal_step(
+                                pass_number,
+                                proposal,
+                                "subscriber_resolve",
+                                {"policy_reason": reason},
+                            )
+                        )
                     elif proposal.kind == "flag_contradiction":
                         plan = _plan_with_metadata_flag(plan, "contradiction", proposal.payload)
-                        steps.append(_proposal_step(pass_number, proposal, "subscriber_flag"))
+                        steps.append(
+                            _proposal_step(
+                                pass_number,
+                                proposal,
+                                "subscriber_flag",
+                                {"policy_reason": reason},
+                            )
+                        )
                     elif proposal.kind == "ask_followup":
                         plan = _plan_with_metadata_flag(plan, "followup", proposal.payload)
-                        steps.append(_proposal_step(pass_number, proposal, "subscriber_followup"))
+                        steps.append(
+                            _proposal_step(
+                                pass_number,
+                                proposal,
+                                "subscriber_followup",
+                                {"policy_reason": reason},
+                            )
+                        )
 
         return AttentionRun(
             evidence=plan,
@@ -540,17 +606,21 @@ def _proposal_step(
     pass_number: int,
     proposal: BroadcastProposal,
     name: str,
+    extra_payload: Mapping[str, Any] | None = None,
 ) -> AttentionStep:
+    payload = {
+        "pass": pass_number,
+        "subscriber": proposal.subscriber,
+        "kind": proposal.kind,
+        "priority": proposal.priority,
+        "payload": dict(proposal.payload),
+    }
+    if extra_payload:
+        payload.update(extra_payload)
     return AttentionStep(
         phase="broadcast_bus_tool",
         name=name,
-        payload={
-            "pass": pass_number,
-            "subscriber": proposal.subscriber,
-            "kind": proposal.kind,
-            "priority": proposal.priority,
-            "payload": dict(proposal.payload),
-        },
+        payload=payload,
     )
 
 

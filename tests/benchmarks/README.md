@@ -107,6 +107,29 @@ evidence precision/recall when expected evidence metadata is available. It also
 reports GWT failure buckets such as `max_tool_rounds`, `tool_markup_as_answer`,
 and `wrong_after_tool_loop`.
 
+### Bus on/off matrix
+
+Print the standard bounded bus matrix commands:
+
+```bash
+python -m tests.benchmarks.bus_matrix --max-tasks 2
+```
+
+Run the matrix directly:
+
+```bash
+python -m tests.benchmarks.bus_matrix --run --max-tasks 2
+```
+
+Summarize generated reports:
+
+```bash
+python -m tests.benchmarks.bus_matrix --summarize tests/benchmarks/results/*.json
+```
+
+The analyzer reports `attend/bus=on` and `attend/bus=off` rows plus bus
+accepted/inhibited counts, subscriber timeouts/errors, and on/off deltas.
+
 Run the deterministic regression smoke without model/API calls with:
 
 ```bash

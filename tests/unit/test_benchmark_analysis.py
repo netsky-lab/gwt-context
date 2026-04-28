@@ -3,8 +3,10 @@
 from tests.benchmarks.analyze_results import (
     classify_gwt_failure,
     format_markdown,
+    summarize_bus_pairs,
     summarize_report,
 )
+from tests.benchmarks.bus_matrix import build_bus_matrix_commands, summarize_bus_matrix
 
 
 def test_summarize_report_compares_gwt_and_baseline() -> None:
@@ -115,3 +117,111 @@ def test_classify_gwt_failure_detects_tool_loop_pathologies() -> None:
             "trace": [{"phase": "model", "finish_reason": "tool_calls"}],
         }
     ) == "wrong_after_tool_loop"
+
+
+def test_summarize_report_counts_broadcast_bus_metrics() -> None:
+    summary = summarize_report(
+        {
+            "_path": "bus-on.json",
+            "benchmark_name": "ruler_multi_hop",
+            "model": "model-x",
+            "gwt_mode": "attend",
+            "attend_broadcast_bus": True,
+            "results": [
+                {
+                    "task_id": "ruler_advisor_2hop_0",
+                    "mode": "gwt",
+                    "correct": True,
+                    "latency_seconds": 1.0,
+                    "tool_calls": 3,
+                    "total_tokens": 0,
+                    "trace": [
+                        {
+                            "phase": "broadcast_bus",
+                            "result": {
+                                "proposals": [{}, {}],
+                                "accepted": [{}],
+                                "inhibited": [{}],
+                                "subscriber_reports": [
+                                    {"subscriber": "s", "status": "ok"},
+                                    {"subscriber": "t", "status": "timeout"},
+                                ],
+                            },
+                        },
+                        {"phase": "broadcast_bus_tool"},
+                    ],
+                },
+                {
+                    "task_id": "ruler_advisor_2hop_0",
+                    "mode": "baseline",
+                    "correct": True,
+                    "latency_seconds": 1.0,
+                    "tool_calls": 0,
+                    "total_tokens": 0,
+                },
+            ],
+        }
+    )
+
+    assert summary["bus_proposals"] == 2
+    assert summary["bus_accepted"] == 1
+    assert summary["bus_inhibited"] == 1
+    assert summary["bus_timeouts"] == 1
+    assert summary["bus_tool_actions"] == 1
+
+
+def test_summarize_bus_pairs_compares_attend_on_off() -> None:
+    on = {
+        "benchmark_name": "demo",
+        "model": "m",
+        "gwt_mode": "attend",
+        "attend_broadcast_bus": True,
+        "task_count": 1,
+        "gwt_accuracy": 1.0,
+        "avg_gwt_tool_calls": 3.0,
+        "bus_accepted": 2,
+    }
+    off = {
+        **on,
+        "attend_broadcast_bus": False,
+        "gwt_accuracy": 0.0,
+        "avg_gwt_tool_calls": 2.0,
+        "bus_accepted": 0,
+    }
+
+    rows = summarize_bus_pairs([on, off])
+
+    assert rows == [
+        {
+            "benchmark_name": "demo",
+            "model": "m",
+            "task_count": 1,
+            "accuracy_delta": 1.0,
+            "tool_call_delta": 1.0,
+            "accepted_delta": 2,
+        }
+    ]
+
+
+def test_bus_matrix_builds_on_off_commands(tmp_path) -> None:
+    commands = build_bus_matrix_commands(max_tasks=2)
+
+    assert {command.bus_enabled for command in commands} == {True, False}
+    assert all("--gwt-mode" in command.command for command in commands)
+
+    report_path = tmp_path / "report.json"
+    report_path.write_text(
+        """
+        {
+          "benchmark_name": "demo",
+          "model": "m",
+          "gwt_mode": "attend",
+          "attend_broadcast_bus": true,
+          "results": []
+        }
+        """,
+        encoding="utf-8",
+    )
+    summary = summarize_bus_matrix([report_path])
+
+    assert "markdown" in summary

@@ -1,5 +1,7 @@
 """Tests for post-broadcast subscriber bus behavior."""
 
+import time
+
 from gwt_context.application.attention import EvidencePlan
 from gwt_context.application.broadcast_bus import (
     BroadcastBus,
@@ -108,3 +110,36 @@ def test_contradiction_checker_requires_configured_markers() -> None:
 
     proposals = ContradictionCheckerSubscriber(["disagrees with"]).propose(context)
     assert proposals[0].kind == "flag_contradiction"
+
+
+def test_broadcast_bus_records_subscriber_timeout() -> None:
+    class SlowSubscriber:
+        name = "slow"
+
+        def propose(self, _context: BroadcastContext) -> tuple[BroadcastProposal, ...]:
+            time.sleep(0.02)
+            return ()
+
+    result = BroadcastBus(
+        [SlowSubscriber()],
+        subscriber_timeout_seconds=0.001,
+    ).publish(_context())
+
+    assert result.proposals == ()
+    assert result.subscriber_reports[0].status == "timeout"
+
+
+def test_contradiction_checker_flags_structured_record_conflicts() -> None:
+    context = _context(
+        question="Is Employee-001 consistent?",
+        broadcast_text="Employee-001 status active",
+        context_chunks=(
+            "Employee-001 | status=active | department=Research",
+            "Employee-001 | status=on_leave | department=Research",
+        ),
+    )
+
+    proposals = ContradictionCheckerSubscriber().propose(context)
+
+    assert proposals[0].kind == "flag_contradiction"
+    assert proposals[0].payload["conflicts"][0]["record_id"] == "Employee-001"

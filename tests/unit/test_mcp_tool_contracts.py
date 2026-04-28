@@ -6,6 +6,7 @@ from gwt_context.server import create_server
 EXPECTED_TOOLS = {
     "gwt_attend",
     "gwt_broadcast",
+    "gwt_bus_inspect",
     "gwt_collection_query",
     "gwt_compete",
     "gwt_evict",
@@ -50,6 +51,7 @@ def test_core_tool_response_key_contracts_are_stable(tmp_path) -> None:
     gwt_collection_query = _tool_call(mcp, "gwt_collection_query")
     gwt_attend = _tool_call(mcp, "gwt_attend")
     gwt_trace_explain = _tool_call(mcp, "gwt_trace_explain")
+    gwt_bus_inspect = _tool_call(mcp, "gwt_bus_inspect")
 
     store = gwt_store("Idea-001 | type=twitter | topic=GWT | score=9 | status=ready")
     query = gwt_query("GWT", k=1)
@@ -57,6 +59,7 @@ def test_core_tool_response_key_contracts_are_stable(tmp_path) -> None:
     collection = gwt_collection_query("top_k", metric="score", k=1)
     attend = gwt_attend("How many ideas have status = 'ready'?", planner="structured")
     trace = gwt_trace_explain()
+    bus = gwt_bus_inspect()
 
     assert set(store) == {"id", "memory_type", "activation_state", "linked_to", "status"}
     assert set(query[0]) == {
@@ -105,3 +108,4 @@ def test_core_tool_response_key_contracts_are_stable(tmp_path) -> None:
         "explanation",
         "trace",
     } <= set(trace)
+    assert {"status", "broadcast_bus", "summary"} <= set(bus)

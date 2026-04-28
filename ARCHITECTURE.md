@@ -92,9 +92,16 @@
   accepted side effects through public application ports, such as
   `IngestionPort.query_similar` plus `CyclePort.enqueue_for_competition`, or by
   updating its deterministic evidence plan for `resolve_answer` proposals.
+- Subscribers run in isolated execution slots with per-subscriber reports and
+  timeout/error statuses; the trace records these alongside proposals.
+- `BusAdmissionPolicy` controls whether accepted bus proposals become runtime
+  side effects, including deterministic-answer suppression of lower-priority
+  recall queries.
 - Conscious workspace items reactivate explicit `linked_ids` into the
   preconscious buffer for the next cycle through `MemoryRepositoryPort`, keeping
   recurrent link-following inside application boundaries.
+- The concrete runtime state/admission contract is documented in
+  `docs/gwt-runtime-contracts.md`.
 - Benchmark resolvers are adapters under `tests/benchmarks/controlled_rules.py`; production MCP handlers do not import benchmark code.
 
 ### 3) Explicit key data path

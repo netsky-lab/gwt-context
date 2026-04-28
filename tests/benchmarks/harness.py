@@ -199,6 +199,7 @@ class BenchmarkReport:
     config_hash: str = ""
     task_count: int = 0
     gwt_mode: str = "tools"
+    attend_broadcast_bus: bool = True
 
     @property
     def gwt_results(self) -> list[TaskResult]:
@@ -285,6 +286,7 @@ class BenchmarkReport:
             "config_hash": self.config_hash,
             "task_count": self.task_count,
             "gwt_mode": self.gwt_mode,
+            "attend_broadcast_bus": self.attend_broadcast_bus,
             "gwt_accuracy": self.gwt_accuracy,
             "baseline_accuracy": self.baseline_accuracy,
             "improvement": self.improvement,
@@ -486,6 +488,7 @@ class GWTSession:
             "buffer": self._cycle.inspect("buffer"),
             "goals": self._cycle.inspect("goals"),
             "stats": self._cycle.inspect("stats"),
+            "broadcast_bus": self._cycle.inspect("broadcast_bus"),
         }
 
     @property
@@ -980,6 +983,8 @@ def _report_config_hash(config: BenchmarkConfig) -> str:
         "concurrency": config.concurrency,
         "api_headers": config.api_headers,
         "results_dir": config.results_dir,
+        "attend_broadcast_bus": ATTEND_BROADCAST_BUS,
+        "attend_passes": ATTEND_PASSES,
     }
     return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
 
@@ -1098,6 +1103,7 @@ def run_benchmark(
         config_hash=run_config_hash,
         task_count=len(tasks),
         gwt_mode=gwt_mode,
+        attend_broadcast_bus=ATTEND_BROADCAST_BUS,
     )
 
     def run_task_pair(index: int, task: BenchmarkTask) -> tuple[int, TaskResult, TaskResult]:
