@@ -34,6 +34,7 @@
   external subscriber proof-of-concept without external provider calls.
 - Benchmark trace HTML reports include a phase timeline, bus action counts,
   policy skip counts, and subscriber status badges for faster runtime review.
+- Benchmark summaries include bus inhibition reason counts for release audit.
 - Codex MCP setup is documented and the local release gate is executable via
   `python scripts/release_gate.py`.
 - Codex memory is split into project/global namespaces, with a cleanup helper

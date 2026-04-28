@@ -135,19 +135,25 @@ def test_summarize_report_counts_broadcast_bus_metrics() -> None:
                     "latency_seconds": 1.0,
                     "tool_calls": 3,
                     "total_tokens": 0,
-                    "trace": [
-                        {
-                            "phase": "broadcast_bus",
-                            "result": {
-                                "proposals": [{}, {}],
-                                "accepted": [{}],
-                                "inhibited": [{}],
-                                "subscriber_reports": [
-                                    {"subscriber": "s", "status": "ok"},
-                                    {"subscriber": "t", "status": "timeout"},
-                                ],
+                        "trace": [
+                            {
+                                "phase": "broadcast_bus",
+                                "result": {
+                                    "proposals": [{}, {}],
+                                    "accepted": [{}],
+                                    "inhibited": [{}],
+                                    "decisions": [
+                                        {
+                                            "status": "inhibited",
+                                            "reason": "below_threshold",
+                                        }
+                                    ],
+                                    "subscriber_reports": [
+                                        {"subscriber": "s", "status": "ok"},
+                                        {"subscriber": "t", "status": "timeout"},
+                                    ],
+                                },
                             },
-                        },
                         {"phase": "broadcast_bus_tool"},
                     ],
                 },
@@ -168,6 +174,8 @@ def test_summarize_report_counts_broadcast_bus_metrics() -> None:
     assert summary["bus_inhibited"] == 1
     assert summary["bus_timeouts"] == 1
     assert summary["bus_tool_actions"] == 1
+    assert summary["bus_inhibited_reasons"] == {"below_threshold": 1}
+    assert "## Bus Inhibition Reasons" in format_markdown([summary])
 
 
 def test_summarize_bus_pairs_compares_attend_on_off() -> None:

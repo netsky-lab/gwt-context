@@ -105,6 +105,7 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
         "bus_timeouts": bus_metrics["timeouts"],
         "bus_errors": bus_metrics["errors"],
         "bus_tool_actions": bus_metrics["tool_actions"],
+        "bus_inhibited_reasons": bus_metrics["inhibited_reasons"],
         "family_metrics": family_metrics,
         "buckets": buckets,
         "failure_buckets": dict(sorted(failure_buckets.items())),
@@ -188,6 +189,20 @@ def format_markdown(summaries: list[dict[str, Any]]) -> str:
                     f"| {row['benchmark_name']} | {row['task_count']} | "
                     f"{row['accuracy_delta']:+.1%} | {row['tool_call_delta']:+.2f} | "
                     f"{row['accepted_delta']:+.0f} |"
+                )
+            lines.append("")
+        reason_rows = [
+            summary for summary in summaries if summary.get("bus_inhibited_reasons")
+        ]
+        if reason_rows:
+            lines.extend(["## Bus Inhibition Reasons", ""])
+            for summary in reason_rows:
+                reasons = ", ".join(
+                    f"{reason}={count}"
+                    for reason, count in summary["bus_inhibited_reasons"].items()
+                )
+                lines.append(
+                    f"- {summary['benchmark_name']} / {summary['model']}: {reasons}"
                 )
             lines.append("")
         gate_rows = _release_gate_rows(summaries)
@@ -379,7 +394,7 @@ def _family_metrics(results: list[dict[str, Any]]) -> dict[str, dict[str, float]
     return dict(sorted(metrics.items()))
 
 
-def _bus_metrics(results: list[dict[str, Any]]) -> dict[str, int]:
+def _bus_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
     metrics = {
         "proposals": 0,
         "accepted": 0,
@@ -387,6 +402,7 @@ def _bus_metrics(results: list[dict[str, Any]]) -> dict[str, int]:
         "timeouts": 0,
         "errors": 0,
         "tool_actions": 0,
+        "inhibited_reasons": {},
     }
     for result in results:
         for entry in result.get("trace", []):
@@ -405,10 +421,21 @@ def _bus_metrics(results: list[dict[str, Any]]) -> dict[str, int]:
     return metrics
 
 
-def _add_bus_payload(metrics: dict[str, int], payload: dict[str, Any]) -> None:
+def _add_bus_payload(metrics: dict[str, Any], payload: dict[str, Any]) -> None:
     metrics["proposals"] += len(payload.get("proposals", []))
     metrics["accepted"] += len(payload.get("accepted", []))
     metrics["inhibited"] += len(payload.get("inhibited", []))
+    summary = payload.get("summary", {})
+    if isinstance(summary, dict) and isinstance(summary.get("inhibited_reasons"), dict):
+        _add_reason_counts(metrics["inhibited_reasons"], summary["inhibited_reasons"])
+    else:
+        for decision in payload.get("decisions", []):
+            if not isinstance(decision, dict) or decision.get("status") != "inhibited":
+                continue
+            reason = str(decision.get("reason", "unknown"))
+            metrics["inhibited_reasons"][reason] = (
+                metrics["inhibited_reasons"].get(reason, 0) + 1
+            )
     for report in payload.get("subscriber_reports", []):
         if not isinstance(report, dict):
             continue
@@ -416,6 +443,16 @@ def _add_bus_payload(metrics: dict[str, int], payload: dict[str, Any]) -> None:
             metrics["timeouts"] += 1
         if report.get("status") == "error":
             metrics["errors"] += 1
+    metrics["inhibited_reasons"] = dict(sorted(metrics["inhibited_reasons"].items()))
+
+
+def _add_reason_counts(target: dict[str, int], source: dict[str, Any]) -> None:
+    for reason, count in source.items():
+        try:
+            value = int(count)
+        except (TypeError, ValueError):
+            continue
+        target[str(reason)] = target.get(str(reason), 0) + value
 
 
 def _task_family(task_id: str) -> str:

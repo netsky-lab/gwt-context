@@ -48,6 +48,7 @@ Bus matrix summary:
 
 ```bash
 python -m tests.benchmarks.bus_matrix --summarize tests/benchmarks/results/*.json
+python -m tests.benchmarks.analyze_results tests/benchmarks/results/*.json
 ```
 
 For a bounded model-backed sanity run against the configured `.env` endpoint:
@@ -136,5 +137,7 @@ proposal counts against the default bus-on run.
 
 - Larger benchmark matrix with more distractors, more records, and multiple
   random seeds.
+- Fresh `v0.3.0` bus on/off matrix after memory management and external
+  subscriber wiring, including bus inhibition reason counts.
 - Publishing to PyPI or an internal package registry.
 - Hosted documentation for MCP client configuration examples.

@@ -14,6 +14,8 @@
   passes.
 - Added Codex MCP bootstrap and health scripts, npm aliases, and docs for
   dry-run registration, namespace inspection, and temp-dir smoke checks.
+- Extended benchmark analysis with bus inhibition reason metrics and added
+  `v0.3.0` release-gate documentation.
 - Split Codex MCP memory into project/global namespace guidance, added
   `scripts/clear_codex_memory.py` for safe namespace cleanup, and reconfigured
   the local Codex MCP entries to use project-specific and global data dirs.
