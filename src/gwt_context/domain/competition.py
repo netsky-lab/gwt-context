@@ -121,6 +121,22 @@ class CompetitionEngine:
         # Determine evictions and admissions
         evicted = [i for i in workspace.items if i.id not in keeper_ids]
         winners = [i for i in keepers if i.id not in ws_ids]
+        winner_ids = {item.id for item in winners}
+        evicted_ids = {item.id for item in evicted}
+        reason_breakdown: dict[str, str] = {}
+        for item in external_candidates:
+            score = scores.get(item.id, 0.0)
+            if item.id in winner_ids:
+                reason_breakdown[item.id] = "admitted"
+            elif score < self._min_activation:
+                reason_breakdown[item.id] = "below_ignition_threshold"
+            else:
+                reason_breakdown[item.id] = "eligible_not_selected"
+        for item in workspace.items:
+            if item.id in evicted_ids:
+                reason_breakdown[item.id] = "evicted_by_higher_activation"
+            else:
+                reason_breakdown[item.id] = "kept_in_workspace"
 
         # Merge scores for the result
         all_scores.update(scores)
@@ -130,6 +146,7 @@ class CompetitionEngine:
             evicted=evicted,
             scores=all_scores,
             reason="ignition_threshold" if external_candidates and not eligible_external else "",
+            reason_breakdown=reason_breakdown,
         )
 
     def _get_relevance_score(

@@ -15,7 +15,8 @@ removed without updating tests and changelog.
 - `gwt_broadcast()`
   - Returns workspace broadcast text.
 - `gwt_compete(n_slots?)`
-  - Success keys: `winners`, `would_evict`, `all_scores`
+  - Success keys: `winners`, `would_evict`, `all_scores`, `reason`,
+    `reason_breakdown`
 - `gwt_query(query, k=5, memory_type?, admit=false)`
   - Success item keys: `id`, `content`, `memory_type`, `activation_state`,
     `activation_level`, `linked_ids`, `tags`, `admitted`

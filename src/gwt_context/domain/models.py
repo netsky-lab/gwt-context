@@ -118,6 +118,7 @@ class CompetitionResult:
     evicted: list[MemoryItem]
     scores: dict[str, float]  # item_id → final activation score
     reason: str = ""
+    reason_breakdown: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

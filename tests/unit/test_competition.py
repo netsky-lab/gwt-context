@@ -50,6 +50,7 @@ class TestCompetitionEngine:
         assert result.winners == []
         assert result.evicted == []
         assert result.reason == "ignition_threshold"
+        assert result.reason_breakdown == {"weak": "below_ignition_threshold"}
 
     def test_evicts_weaker_items(self):
         # Use only relevance specialist for deterministic test
@@ -67,6 +68,29 @@ class TestCompetitionEngine:
         result = engine.run_competition([strong], [goal], ws)
         assert any(w.id == "strong" for w in result.winners)
         assert any(e.id == "weak" for e in result.evicted)
+        assert result.reason_breakdown["strong"] == "admitted"
+        assert result.reason_breakdown["weak"] == "evicted_by_higher_activation"
+
+    def test_eligible_candidate_can_remain_preconscious_when_workspace_full(self):
+        rel = RelevanceSpecialist()
+        rel.weight = 1.0
+        engine = CompetitionEngine(
+            specialists=[rel],
+            goal_modulation_strength=0.0,
+            min_activation=0.0,
+        )
+        ws = GlobalWorkspace(capacity=1)
+        incumbent = _item("incumbent", [1, 0, 0])
+        ws.admit(incumbent)
+        goal = Goal(description="goal", embedding=[1, 0, 0])
+        candidate = _item("candidate", [0.8, 0.2, 0])
+
+        result = engine.run_competition([candidate], [goal], ws)
+
+        assert result.winners == []
+        assert result.evicted == []
+        assert result.reason_breakdown["candidate"] == "eligible_not_selected"
+        assert result.reason_breakdown["incumbent"] == "kept_in_workspace"
 
     def test_goal_modulation_boosts(self):
         rel = RelevanceSpecialist()

@@ -45,6 +45,8 @@ class TestBoundaryDelegation:
         cycle.run_competition_dry.assert_called_once_with(n_slots=2)
         assert result["winners"] == []
         assert result["would_evict"] == []
+        assert result["reason"] == ""
+        assert result["reason_breakdown"] == {}
 
     def test_gwt_link_delegates_to_cycle_link_items(self):
         """MCP linking should call cycle.link_items() only."""

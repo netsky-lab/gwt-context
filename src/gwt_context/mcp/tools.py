@@ -452,6 +452,8 @@ def register_tools(
                     result.scores.items(), key=lambda x: x[1], reverse=True
                 )
             },
+            "reason": result.reason,
+            "reason_breakdown": dict(result.reason_breakdown),
         }
 
     @mcp.tool()
