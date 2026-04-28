@@ -9,6 +9,7 @@ EXPECTED_TOOLS = {
     "gwt_backup_memory",
     "gwt_bus_inspect",
     "gwt_collection_query",
+    "gwt_compact_working_memory",
     "gwt_compete",
     "gwt_evict",
     "gwt_export_memory",

@@ -4,6 +4,7 @@ These tests ensure handlers stay thin and call application-level APIs
 rather than peeking into private/internal service fields.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import Mock
 
 from mcp.server.fastmcp import FastMCP
@@ -491,6 +492,49 @@ class TestBoundaryDelegation:
         assert restored["mode"] == "replace"
         assert restored["deleted_count"] == 1
         assert restored["imported_count"] == 1
+
+    def test_gwt_compact_working_memory_dry_run_and_confirmed_delete(self):
+        cycle = Mock()
+        old = MemoryItem(
+            id="old-1",
+            content="working scratch old",
+            memory_type=MemoryType.WORKING,
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        newest = MemoryItem(
+            id="new-1",
+            content="working scratch new",
+            memory_type=MemoryType.WORKING,
+            created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+        summary = MemoryItem(
+            id="summary-1",
+            content="Working memory compaction summary",
+            memory_type=MemoryType.SEMANTIC,
+        )
+        ingestion = Mock()
+        ingestion.all_items = Mock(return_value=[old, newest])
+        ingestion.ingest = Mock(return_value=summary)
+        ingestion.delete_items = Mock(return_value=1)
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        dry_run = _tool_call(mcp, "gwt_compact_working_memory")(max_items=1)
+        denied = _tool_call(mcp, "gwt_compact_working_memory")(
+            max_items=1,
+            dry_run=False,
+        )
+        compacted = _tool_call(mcp, "gwt_compact_working_memory")(
+            max_items=1,
+            dry_run=False,
+            confirm="COMPACT_WORKING",
+        )
+
+        assert dry_run["status"] == "dry_run"
+        assert dry_run["candidate_ids"] == ["old-1"]
+        assert denied["error"] == "confirmation required"
+        assert compacted["status"] == "compacted"
+        assert compacted["summary_id"] == "summary-1"
+        ingestion.delete_items.assert_called_once_with(["old-1"])
 
     def test_gwt_collection_query_validates_k(self):
         cycle = Mock()

@@ -5,6 +5,8 @@
 - Added confirmed persistent memory reset, JSONL backup/restore tools, namespace
   file-size profiling, deduplicating import, and port-backed persisted item
   deletion.
+- Added `gwt_compact_working_memory` for dry-run/confirmed working-memory
+  retention with JSONL backup and semantic summary creation.
 - Added MCP memory management tools for namespace profiling, runtime reset,
   JSONL export/import, namespace tagging on stored records, and structured
   read-model restoration from persisted memory after MCP startup.

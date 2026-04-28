@@ -266,6 +266,71 @@ def register_tools(
         return imported
 
     @mcp.tool()
+    def gwt_compact_working_memory(
+        max_items: int = 20,
+        dry_run: bool = True,
+        confirm: str = "",
+    ) -> dict[str, Any]:
+        """Compact old working-memory records into one semantic summary item.
+
+        By default this is a dry run. Deletion requires
+        `dry_run=false` and `confirm="COMPACT_WORKING"`.
+        """
+        if max_items < 0:
+            return {"error": "max_items must be >= 0"}
+        working_items = sorted(
+            [
+                item for item in ingestion.all_items()
+                if item.memory_type == MemoryType.WORKING
+            ],
+            key=lambda item: item.created_at,
+            reverse=True,
+        )
+        keep = working_items[:max_items]
+        compact = working_items[max_items:]
+        backup_jsonl = "\n".join(json.dumps(_export_item(item), sort_keys=True) for item in compact)
+        if dry_run:
+            return {
+                "status": "dry_run",
+                "max_items": max_items,
+                "keep_count": len(keep),
+                "compact_count": len(compact),
+                "candidate_ids": [item.id for item in compact],
+                "backup": {
+                    "format": "gwt-memory-jsonl-v1",
+                    "item_count": len(compact),
+                    "jsonl": backup_jsonl,
+                },
+            }
+        if confirm != "COMPACT_WORKING":
+            return {
+                "error": "confirmation required",
+                "required_confirm": "COMPACT_WORKING",
+            }
+        summary_item: MemoryItem | None = None
+        if compact:
+            summary_item = ingestion.ingest(
+                content=_working_summary_content(compact),
+                memory_type=MemoryType.SEMANTIC,
+                source="tool:gwt_compact_working_memory",
+                tags=_memory_tags(["compaction:working"]),
+            )
+            runtime_index.add(summary_item.content)
+        deleted_count = ingestion.delete_items([item.id for item in compact])
+        return {
+            "status": "compacted",
+            "max_items": max_items,
+            "keep_count": len(keep),
+            "deleted_count": deleted_count,
+            "summary_id": summary_item.id if summary_item else None,
+            "backup": {
+                "format": "gwt-memory-jsonl-v1",
+                "item_count": len(compact),
+                "jsonl": backup_jsonl,
+            },
+        }
+
+    @mcp.tool()
     def gwt_export_memory(
         memory_type: str | None = None,
         tag: str | None = None,
@@ -847,6 +912,18 @@ def _dedupe_key(
     tags: Sequence[str],
 ) -> tuple[str, str, tuple[str, ...]]:
     return (" ".join(content.split()), source, tuple(sorted(set(tags))))
+
+
+def _working_summary_content(items: Sequence[MemoryItem]) -> str:
+    lines = [
+        f"Working memory compaction summary | compacted_count={len(items)}",
+    ]
+    for item in items[:20]:
+        preview = " ".join(item.content.split())[:160]
+        lines.append(f"- {item.id}: {preview}")
+    if len(items) > 20:
+        lines.append(f"- omitted={len(items) - 20}")
+    return "\n".join(lines)
 
 
 def _export_item(item: MemoryItem) -> dict[str, Any]:

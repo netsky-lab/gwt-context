@@ -68,6 +68,12 @@ removed without updating tests and changelog.
   - Replace mode requires `confirm="RESTORE_REPLACE"`, deletes existing
     persisted memory through `IngestionPort`, returns a JSONL backup, then
     imports the supplied JSONL.
+- `gwt_compact_working_memory(max_items=20, dry_run=true, confirm="")`
+  - Dry-run keys: `status`, `max_items`, `keep_count`, `compact_count`,
+    `candidate_ids`, `backup`
+  - Confirmed compaction requires `confirm="COMPACT_WORKING"`, creates one
+    semantic summary item, deletes compacted working records through
+    `IngestionPort`, and returns the JSONL backup.
 - `gwt_reset(scope="runtime", confirm="")`
   - Supported scopes: `runtime`, `workspace`, `persistent`.
   - Runtime reset requires `confirm="RESET_RUNTIME"` and clears only in-process
