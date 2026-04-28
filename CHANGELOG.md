@@ -2,6 +2,9 @@
 
 ## 2026-04-28
 
+- Split Codex MCP memory into project/global namespace guidance, added
+  `scripts/clear_codex_memory.py` for safe namespace cleanup, and reconfigured
+  the local Codex MCP entries to use project-specific and global data dirs.
 - Added real stdio MCP client smoke coverage, Codex MCP setup docs, an
   infrastructure OpenAI-compatible external subscriber adapter, local release
   gate and Qwen sanity scripts, CI runtime smoke/boundary steps, and richer

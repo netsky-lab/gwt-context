@@ -75,12 +75,15 @@ codex mcp add gwt-context \
   --env GWT_EMBEDDING_PROVIDER=hash \
   --env GWT_EMBEDDING_MODEL=hash \
   --env GWT_EMBEDDING_DIM=32 \
-  --env GWT_DATA_DIR=/home/netsky/.gwt-context-codex \
+  --env GWT_DATA_DIR=/home/netsky/.gwt-context-codex/projects/gwt-context \
   -- python -m gwt_context
 ```
 
 New Codex MCP tools are available to new Codex sessions after the config is
 loaded.
+Use `gwt-global` with `/home/netsky/.gwt-context-codex/global` for cross-project
+memory. See [`docs/codex-mcp.md`](docs/codex-mcp.md) for namespace setup and
+cleanup.
 
 ## MCP Tools
 

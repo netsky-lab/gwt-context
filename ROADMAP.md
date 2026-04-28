@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), real stdio MCP smoke (`python -m gwt_context.mcp_client_smoke`), and `pytest` baseline of 178 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), real stdio MCP smoke (`python -m gwt_context.mcp_client_smoke`), and `pytest` baseline of 182 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -32,6 +32,8 @@
   policy skip counts, and subscriber status badges for faster runtime review.
 - Codex MCP setup is documented and the local release gate is executable via
   `python scripts/release_gate.py`.
+- Codex memory is split into project/global namespaces, with a cleanup helper
+  for safe local memory hygiene.
 - Task onboarding constraint is required in both `AGENTS.md` and task planning:
   - read `ARCHITECTURE.md` first,
   - record in/out boundaries, forbidden imports, and forbidden coupling checks,
