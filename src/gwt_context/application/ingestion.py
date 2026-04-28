@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from gwt_context.domain.models import ActivationState, MemoryItem, MemoryType
 from gwt_context.interfaces.ports import EmbeddingPort, MemoryRepositoryPort, VectorSearchPort
 
@@ -105,3 +107,16 @@ class IngestionPipeline:
     def all_items(self) -> list[MemoryItem]:
         """Return all persisted memory items."""
         return self._store.get_all_items()
+
+    def delete_items(self, item_ids: Sequence[str]) -> int:
+        """Delete persisted memory items and vector entries by ID."""
+        deleted = 0
+        for item_id in item_ids:
+            if self._store.get_item(item_id) is None:
+                continue
+            self._store.delete_item(item_id)
+            self._vi.remove(item_id)
+            deleted += 1
+        if deleted:
+            self._vi.save()
+        return deleted

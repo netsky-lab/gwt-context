@@ -45,27 +45,38 @@ removed without updating tests and changelog.
 - `gwt_memory_profile()`
   - Success keys: `status`, `namespace`, `data_dir`, `embedding`,
     `persisted_item_count`, `runtime_index_count`, `structured_record_count`,
-    `structured_fields`, `counts_by_type`, `counts_by_source`,
+    `structured_fields`, `counts_by_type`, `counts_by_source`, `file_sizes`,
     `restored_runtime_items`, `cycle_stats`, `retention_policy`
+- `gwt_backup_memory(memory_type?, tag?)`
+  - Success keys: `status`, `format`, `namespace`, `file_sizes`,
+    `item_count`, `jsonl`
+  - Format is `gwt-memory-backup-v1`; backup payload is JSONL plus namespace
+    metadata, not a binary archive.
 - `gwt_export_memory(memory_type?, tag?)`
   - Success keys: `status`, `format`, `item_count`, `filters`, `jsonl`
   - Format is `gwt-memory-jsonl-v1`; embeddings are intentionally omitted and
     rebuilt during import.
   - Error keys: `error`, optional `supported_memory_types`
-- `gwt_import_memory(jsonl, default_memory_type="semantic", tags?, admit=false)`
+- `gwt_import_memory(jsonl, default_memory_type="semantic", tags?, admit=false, dedupe=true)`
   - Success keys: `status`, `imported_count`, `imported_ids`, `error_count`,
-    `errors`, `admit`
+    `errors`, `admit`, `dedupe`, `skipped_duplicate_count`, `skipped_duplicates`
   - Imported records receive active namespace tags and are re-embedded into the
     current namespace.
   - Error keys: `error`, optional `supported_memory_types`
+- `gwt_restore_memory(jsonl, mode="merge", confirm="", admit=false)`
+  - Supported modes: `merge`, `replace`.
+  - Replace mode requires `confirm="RESTORE_REPLACE"`, deletes existing
+    persisted memory through `IngestionPort`, returns a JSONL backup, then
+    imports the supplied JSONL.
 - `gwt_reset(scope="runtime", confirm="")`
-  - Supported scopes: `runtime`, `workspace`.
+  - Supported scopes: `runtime`, `workspace`, `persistent`.
   - Runtime reset requires `confirm="RESET_RUNTIME"` and clears only in-process
     structured read models.
   - Workspace reset requires `confirm="RESET_WORKSPACE"` and evicts current
     workspace items through `CyclePort`.
-  - Persistent namespace deletion remains outside MCP in local maintenance
-    scripts.
+  - Persistent reset requires `confirm="RESET_PERSISTENT"`, deletes memory items
+    through `IngestionPort`, clears the runtime read model, and returns a JSONL
+    backup in the response.
 - `gwt_evict(item_id)`
   - Delegates to `CyclePort.evict_workspace_item`; payload is cycle-defined.
 - `gwt_link(source_id, target_id)`

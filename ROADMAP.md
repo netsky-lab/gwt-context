@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), real stdio MCP smoke (`python -m gwt_context.mcp_client_smoke`), and `pytest` baseline of 191 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), real stdio MCP smoke (`python -m gwt_context.mcp_client_smoke`), and `pytest` baseline of 194 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -42,7 +42,9 @@
   MCP registration commands, namespace inspection, and temp-dir stdio smoke.
 - MCP memory management now covers namespace profile, JSONL import/export,
   runtime read-model reset, namespace tags on new records, and structured
-  read-model bootstrap from persisted items after server startup.
+  read-model bootstrap from persisted items after server startup. Confirmed
+  persistent reset/restore returns JSONL backups and deletes through application
+  ports, not MCP-side storage internals.
 - Task onboarding constraint is required in both `AGENTS.md` and task planning:
   - read `ARCHITECTURE.md` first,
   - record in/out boundaries, forbidden imports, and forbidden coupling checks,

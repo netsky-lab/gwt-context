@@ -143,6 +143,16 @@ class SQLiteMemoryStore:
 
     def delete_item(self, item_id: str) -> None:
         self._conn.execute("DELETE FROM memory_items WHERE id = ?", (item_id,))
+        rows = self._conn.execute("SELECT id, linked_ids FROM memory_items").fetchall()
+        for row in rows:
+            linked_ids = json.loads(row["linked_ids"])
+            if item_id not in linked_ids:
+                continue
+            linked_ids = [linked_id for linked_id in linked_ids if linked_id != item_id]
+            self._conn.execute(
+                "UPDATE memory_items SET linked_ids = ? WHERE id = ?",
+                (json.dumps(linked_ids), row["id"]),
+            )
         self._conn.commit()
 
     def count_items(self) -> int:

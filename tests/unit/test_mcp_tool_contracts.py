@@ -6,6 +6,7 @@ from gwt_context.server import create_server
 EXPECTED_TOOLS = {
     "gwt_attend",
     "gwt_broadcast",
+    "gwt_backup_memory",
     "gwt_bus_inspect",
     "gwt_collection_query",
     "gwt_compete",
@@ -17,6 +18,7 @@ EXPECTED_TOOLS = {
     "gwt_memory_profile",
     "gwt_query",
     "gwt_resolve",
+    "gwt_restore_memory",
     "gwt_reset",
     "gwt_set_goal",
     "gwt_store",

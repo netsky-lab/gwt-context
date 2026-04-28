@@ -410,6 +410,88 @@ class TestBoundaryDelegation:
         assert result["imported_ids"] == ["item-2"]
         cycle.enqueue_for_competition.assert_called_once_with(imported)
 
+    def test_gwt_import_memory_skips_duplicate_records_by_default(self):
+        cycle = Mock()
+        original = MemoryItem(
+            id="item-1",
+            content="Imported-001 | type=note | topic=GWT | score=8",
+            memory_type=MemoryType.SEMANTIC,
+            source="tool:gwt_store",
+            tags=["scope:default", "namespace:default"],
+        )
+        ingestion = Mock()
+        ingestion.all_items = Mock(return_value=[original])
+        ingestion.ingest = Mock()
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        exported = _tool_call(mcp, "gwt_export_memory")()
+        result = _tool_call(mcp, "gwt_import_memory")(exported["jsonl"])
+
+        assert result["imported_count"] == 0
+        assert result["skipped_duplicate_count"] == 1
+        ingestion.ingest.assert_not_called()
+
+    def test_gwt_reset_persistent_requires_confirmation_and_returns_backup(self):
+        cycle = Mock()
+        item = MemoryItem(
+            id="item-1",
+            content="Persistent-001 | status=ready",
+            memory_type=MemoryType.SEMANTIC,
+            source="tool:gwt_store",
+            tags=["scope:default", "namespace:default"],
+        )
+        ingestion = Mock()
+        ingestion.all_items = Mock(return_value=[item])
+        ingestion.delete_items = Mock(return_value=1)
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        denied = _tool_call(mcp, "gwt_reset")(scope="persistent")
+        reset = _tool_call(mcp, "gwt_reset")(
+            scope="persistent",
+            confirm="RESET_PERSISTENT",
+        )
+
+        assert denied["error"] == "confirmation required"
+        assert reset["deleted_count"] == 1
+        assert reset["backup"]["item_count"] == 1
+        assert "Persistent-001" in reset["backup"]["jsonl"]
+        ingestion.delete_items.assert_called_once_with(["item-1"])
+
+    def test_gwt_restore_memory_replace_requires_confirmation(self):
+        cycle = Mock()
+        existing = MemoryItem(
+            id="old-1",
+            content="Old-001 | status=stale",
+            memory_type=MemoryType.SEMANTIC,
+            source="tool:gwt_store",
+            tags=["scope:default", "namespace:default"],
+        )
+        imported = MemoryItem(
+            id="new-1",
+            content="New-001 | status=ready",
+            memory_type=MemoryType.SEMANTIC,
+            source="tool:gwt_import_memory",
+            tags=["scope:default", "namespace:default"],
+        )
+        ingestion = Mock()
+        ingestion.all_items = Mock(side_effect=[[], [existing], []])
+        ingestion.delete_items = Mock(return_value=1)
+        ingestion.ingest = Mock(return_value=imported)
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        jsonl = '{"content":"New-001 | status=ready","memory_type":"semantic"}'
+        denied = _tool_call(mcp, "gwt_restore_memory")(jsonl, mode="replace")
+        restored = _tool_call(mcp, "gwt_restore_memory")(
+            jsonl,
+            mode="replace",
+            confirm="RESTORE_REPLACE",
+        )
+
+        assert denied["error"] == "confirmation required"
+        assert restored["mode"] == "replace"
+        assert restored["deleted_count"] == 1
+        assert restored["imported_count"] == 1
+
     def test_gwt_collection_query_validates_k(self):
         cycle = Mock()
         ingestion = Mock()

@@ -65,6 +65,9 @@ class MemoryRepositoryPort(Protocol):
     def update_state(self, item_id: str, state: Any) -> None:
         ...
 
+    def delete_item(self, item_id: str) -> None:
+        ...
+
     def get_active_goals(self) -> list[Goal]:
         ...
 
@@ -135,6 +138,10 @@ class IngestionPort(Protocol):
 
     def all_items(self) -> list[MemoryItem]:
         """Return all persisted memory items for read-model bootstrap/export."""
+        ...
+
+    def delete_items(self, item_ids: Sequence[str]) -> int:
+        """Delete persisted memory items and their vector entries."""
         ...
 
 

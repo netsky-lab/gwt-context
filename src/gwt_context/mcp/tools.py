@@ -104,6 +104,7 @@ def register_tools(
             "structured_fields": list(runtime_collection.field_names),
             "counts_by_type": by_type,
             "counts_by_source": by_source,
+            "file_sizes": _namespace_file_sizes(namespace["data_dir"]),
             "restored_runtime_items": restored_count,
             "cycle_stats": cycle.inspect(target="stats"),
             "retention_policy": {
@@ -162,10 +163,107 @@ def register_tools(
                 "persistent_memory_deleted": False,
             }
 
+        if normalized_scope == "persistent":
+            if confirm != "RESET_PERSISTENT":
+                return {
+                    "error": "confirmation required",
+                    "required_confirm": "RESET_PERSISTENT",
+                    "scope": "persistent",
+                }
+            items = ingestion.all_items()
+            backup_jsonl = "\n".join(
+                json.dumps(_export_item(item), sort_keys=True) for item in items
+            )
+            deleted_count = ingestion.delete_items([item.id for item in items])
+            runtime_index.clear()
+            return {
+                "status": "reset",
+                "scope": "persistent",
+                "deleted_count": deleted_count,
+                "persistent_memory_deleted": True,
+                "backup": {
+                    "format": "gwt-memory-jsonl-v1",
+                    "item_count": len(items),
+                    "jsonl": backup_jsonl,
+                },
+            }
+
         return {
             "error": f"unsupported reset scope: {scope}",
-            "supported_scopes": ["runtime", "workspace"],
+            "supported_scopes": ["runtime", "workspace", "persistent"],
         }
+
+    @mcp.tool()
+    def gwt_backup_memory(
+        memory_type: str | None = None,
+        tag: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a JSONL backup payload for the active memory namespace."""
+        exported = gwt_export_memory(memory_type=memory_type, tag=tag)
+        if "error" in exported:
+            return dict(exported)
+        namespace = _memory_namespace()
+        return {
+            "status": "ok",
+            "format": "gwt-memory-backup-v1",
+            "namespace": namespace,
+            "file_sizes": _namespace_file_sizes(namespace["data_dir"]),
+            "item_count": exported["item_count"],
+            "jsonl": exported["jsonl"],
+        }
+
+    @mcp.tool()
+    def gwt_restore_memory(
+        jsonl: str,
+        mode: str = "merge",
+        confirm: str = "",
+        admit: bool = False,
+    ) -> dict[str, Any]:
+        """Restore JSONL memory into the active namespace.
+
+        `mode="replace"` deletes existing persisted memory first and requires
+        `confirm="RESTORE_REPLACE"`. `mode="merge"` keeps existing memory.
+        """
+        normalized_mode = mode.lower().strip() or "merge"
+        if normalized_mode not in {"merge", "replace"}:
+            return {
+                "error": f"unsupported restore mode: {mode}",
+                "supported_modes": ["merge", "replace"],
+            }
+        deleted_count = 0
+        backup: dict[str, Any] | None = None
+        if normalized_mode == "replace":
+            if confirm != "RESTORE_REPLACE":
+                return {
+                    "error": "confirmation required",
+                    "required_confirm": "RESTORE_REPLACE",
+                    "mode": "replace",
+                }
+            existing = ingestion.all_items()
+            backup = {
+                "format": "gwt-memory-jsonl-v1",
+                "item_count": len(existing),
+                "jsonl": "\n".join(
+                    json.dumps(_export_item(item), sort_keys=True) for item in existing
+                ),
+            }
+            deleted_count = ingestion.delete_items([item.id for item in existing])
+            runtime_index.clear()
+        imported = _import_memory_jsonl(
+            jsonl=jsonl,
+            default_memory_type=MemoryType.SEMANTIC,
+            tags=None,
+            admit=admit,
+            dedupe=True,
+            ingestion=ingestion,
+            cycle=cycle,
+            runtime_index=runtime_index,
+        )
+        imported["mode"] = normalized_mode
+        imported["deleted_count"] = deleted_count
+        if backup is not None:
+            imported["backup"] = backup
+        return imported
 
     @mcp.tool()
     def gwt_export_memory(
@@ -198,6 +296,7 @@ def register_tools(
         default_memory_type: str = "semantic",
         tags: list[str] | None = None,
         admit: bool = False,
+        dedupe: bool = True,
     ) -> dict[str, Any]:
         """Import JSONL memory records, re-embedding them into the active namespace."""
         default_mt = _parse_memory_type(default_memory_type)
@@ -208,49 +307,16 @@ def register_tools(
             }
         if not jsonl.strip():
             return {"error": "jsonl must not be empty"}
-
-        imported_ids: list[str] = []
-        errors: list[dict[str, Any]] = []
-        for line_number, line in enumerate(jsonl.splitlines(), start=1):
-            if not line.strip():
-                continue
-            try:
-                payload = json.loads(line)
-            except json.JSONDecodeError as exc:
-                errors.append({"line": line_number, "error": str(exc)})
-                continue
-            if not isinstance(payload, dict):
-                errors.append({"line": line_number, "error": "line must decode to an object"})
-                continue
-            content = str(payload.get("content", "")).strip()
-            if not content:
-                errors.append({"line": line_number, "error": "content must not be empty"})
-                continue
-            mt = _parse_memory_type(str(payload.get("memory_type", default_mt.value))) or default_mt
-            exported_tags = payload.get("tags", [])
-            if not isinstance(exported_tags, list):
-                exported_tags = []
-            item_tags = _memory_tags([*exported_tags, *(tags or [])])
-            item = ingestion.ingest(
-                content=content,
-                memory_type=mt,
-                source=str(payload.get("source") or "tool:gwt_import_memory"),
-                tags=item_tags,
-                link_to=None,
-            )
-            runtime_index.add(item.content)
-            imported_ids.append(item.id)
-            if admit:
-                cycle.enqueue_for_competition(item)
-
-        return {
-            "status": "ok" if not errors else "partial",
-            "imported_count": len(imported_ids),
-            "imported_ids": imported_ids,
-            "error_count": len(errors),
-            "errors": errors,
-            "admit": admit,
-        }
+        return _import_memory_jsonl(
+            jsonl=jsonl,
+            default_memory_type=default_mt,
+            tags=tags,
+            admit=admit,
+            dedupe=dedupe,
+            ingestion=ingestion,
+            cycle=cycle,
+            runtime_index=runtime_index,
+        )
 
     @mcp.tool()
     def gwt_set_goal(
@@ -684,6 +750,103 @@ def _memory_tags(tags: Sequence[str] | None) -> list[str]:
         if tag not in merged:
             merged.append(tag)
     return merged
+
+
+def _namespace_file_sizes(data_dir: str) -> dict[str, int]:
+    root = os.path.expanduser(data_dir)
+    paths = {
+        "memory_db": os.path.join(root, "memory.db"),
+        "vector_json": os.path.join(root, "vectors.json"),
+        "vector_npy": os.path.join(root, "vectors.npy"),
+        "legacy_vector_bin": os.path.join(root, "vectors.bin"),
+    }
+    return {
+        name: os.path.getsize(path)
+        for name, path in paths.items()
+        if os.path.exists(path)
+    }
+
+
+def _import_memory_jsonl(
+    *,
+    jsonl: str,
+    default_memory_type: MemoryType,
+    tags: Sequence[str] | None,
+    admit: bool,
+    dedupe: bool,
+    ingestion: IngestionPort,
+    cycle: CyclePort,
+    runtime_index: RuntimeMemoryIndex,
+) -> dict[str, Any]:
+    imported_ids: list[str] = []
+    skipped_duplicates: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    existing_keys = _dedupe_keys(ingestion.all_items()) if dedupe else set()
+    for line_number, line in enumerate(jsonl.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            errors.append({"line": line_number, "error": str(exc)})
+            continue
+        if not isinstance(payload, dict):
+            errors.append({"line": line_number, "error": "line must decode to an object"})
+            continue
+        content = str(payload.get("content", "")).strip()
+        if not content:
+            errors.append({"line": line_number, "error": "content must not be empty"})
+            continue
+        source = str(payload.get("source") or "tool:gwt_import_memory")
+        exported_tags = payload.get("tags", [])
+        if not isinstance(exported_tags, list):
+            exported_tags = []
+        item_tags = _memory_tags([*exported_tags, *(tags or [])])
+        key = _dedupe_key(content=content, source=source, tags=item_tags)
+        if dedupe and key in existing_keys:
+            skipped_duplicates.append({"line": line_number, "reason": "duplicate"})
+            continue
+        mt = _parse_memory_type(str(payload.get("memory_type", default_memory_type.value)))
+        item = ingestion.ingest(
+            content=content,
+            memory_type=mt or default_memory_type,
+            source=source,
+            tags=item_tags,
+            link_to=None,
+        )
+        existing_keys.add(key)
+        runtime_index.add(item.content)
+        imported_ids.append(item.id)
+        if admit:
+            cycle.enqueue_for_competition(item)
+
+    return {
+        "status": "ok" if not errors else "partial",
+        "imported_count": len(imported_ids),
+        "imported_ids": imported_ids,
+        "skipped_duplicate_count": len(skipped_duplicates),
+        "skipped_duplicates": skipped_duplicates,
+        "error_count": len(errors),
+        "errors": errors,
+        "admit": admit,
+        "dedupe": dedupe,
+    }
+
+
+def _dedupe_keys(items: Sequence[MemoryItem]) -> set[tuple[str, str, tuple[str, ...]]]:
+    return {
+        _dedupe_key(content=item.content, source=item.source, tags=item.tags)
+        for item in items
+    }
+
+
+def _dedupe_key(
+    *,
+    content: str,
+    source: str,
+    tags: Sequence[str],
+) -> tuple[str, str, tuple[str, ...]]:
+    return (" ".join(content.split()), source, tuple(sorted(set(tags))))
 
 
 def _export_item(item: MemoryItem) -> dict[str, Any]:
