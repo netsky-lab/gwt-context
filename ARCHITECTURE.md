@@ -24,6 +24,8 @@
   - `storage.py`: `SQLiteMemoryStore` persistence.
   - `vector_index.py`: numpy-based cosine similarity index.
   - `embeddings.py`: `EmbeddingProvider` + `SentenceTransformerEmbedder`.
+  - `external_subscribers.py`: provider-edge adapters that convert
+    OpenAI-compatible JSON responses into port-safe broadcast proposals.
 - `src/gwt_context/interfaces/`
   - `ports.py`: boundary protocols (`CyclePort`, `IngestionPort`, `MemoryRepositoryPort`, etc.).
 - `src/gwt_context/mcp/`
@@ -105,6 +107,9 @@
 - `ExternalReasoningSubscriber` adapts injected LLM/NLI/agent-loop proposal
   functions into the bus without importing provider SDKs into the application
   layer; provider wiring belongs in infrastructure or deployment composition.
+- `infrastructure.external_subscribers` owns the optional OpenAI-compatible
+  HTTP adapter. It depends inward on public application broadcast contracts and
+  is never imported by `application`.
 - Benchmark resolvers are adapters under `tests/benchmarks/controlled_rules.py`; production MCP handlers do not import benchmark code.
 
 ### 3) Explicit key data path
@@ -175,6 +180,8 @@ sentence-transformer model.
 - Entrypoint:
   - `python -m gwt_context`
   - `gwt-context` script from `pyproject.toml`.
+  - `python -m gwt_context.mcp_client_smoke` starts the packaged server over
+    stdio and exercises public MCP tool/resource calls.
 - Composition root:
   - `server.create_server()` and `server.main()` are the only process bootstrap points.
 - Verified baseline test surface:

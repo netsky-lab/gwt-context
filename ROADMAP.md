@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), and `pytest` baseline of 161 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), real stdio MCP smoke (`python -m gwt_context.mcp_client_smoke`), and `pytest` baseline of 178 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -30,6 +30,8 @@
   external subscriber proof-of-concept without external provider calls.
 - Benchmark trace HTML reports include a phase timeline, bus action counts,
   policy skip counts, and subscriber status badges for faster runtime review.
+- Codex MCP setup is documented and the local release gate is executable via
+  `python scripts/release_gate.py`.
 - Task onboarding constraint is required in both `AGENTS.md` and task planning:
   - read `ARCHITECTURE.md` first,
   - record in/out boundaries, forbidden imports, and forbidden coupling checks,
@@ -105,6 +107,8 @@
   - `docs/release-thresholds.md` records the blocking gates for release tags.
   - `docs/demo-scenarios.md` and `docs/releases/` document runnable release
     scenarios and published release notes.
+  - `python -m gwt_context.mcp_client_smoke` validates real stdio MCP
+    compatibility.
 
 ## Medium-term
 
@@ -134,6 +138,7 @@
   - ROADMAP contains measurable gates for each retry-ready task.
   - CHANGELOG has a chronological entry for every behavior-affecting or governance-affecting change.
   - `test -f AGENTS.md && test -f ARCHITECTURE.md && test -f CHANGELOG.md && test -f ROADMAP.md` is enforced as pre-task check.
+  - `python scripts/release_gate.py` is the canonical local pre-release command.
   - CI remains green across Python checks, npm verification, and package build.
 
 ## Long-term

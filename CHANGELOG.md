@@ -2,6 +2,11 @@
 
 ## 2026-04-28
 
+- Added real stdio MCP client smoke coverage, Codex MCP setup docs, an
+  infrastructure OpenAI-compatible external subscriber adapter, local release
+  gate and Qwen sanity scripts, CI runtime smoke/boundary steps, and richer
+  trace HTML grouping for proposal groups, inhibited proposals, and workspace
+  changes.
 - Bumped package metadata to `0.2.1`, added release note files for `v0.2.0`
   and `v0.2.1`, documented demo scenarios, added deterministic real MCP usage
   and external subscriber proof-of-concept examples, and improved benchmark

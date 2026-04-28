@@ -1,12 +1,12 @@
 # gwt-context
 
-Global Workspace Theory implementation for LLM context management. MCP server with selection-broadcast cycle, specialist competition, and multi-hop reasoning.
+Global Workspace Theory-inspired context management for LLM agents. MCP server with bounded workspace selection, broadcast-bus subscribers, specialist competition, and multi-hop reasoning.
 
 ## What it does
 
-LLMs lose information in long contexts — multi-hop reasoning degrades (Sequential-NIAH best: 63.15%), information aggregation suffers (LongBench Pro T6: 57.72%). Existing solutions (MemGPT, Sculptor, A-MEM, etc.) don't implement the core GWT mechanism.
+LLMs lose information in long contexts — multi-hop reasoning degrades (Sequential-NIAH best: 63.15%), information aggregation suffers (LongBench Pro T6: 57.72%). This project focuses on the architectural parts of GWT that are useful for agent memory: bounded selection, global availability, recurrent activation, and independent post-broadcast processors.
 
-**gwt-context** implements a real Global Workspace Theory selection-broadcast cycle as an MCP server. Specialist processors compete to surface the most relevant information into a capacity-limited workspace. The workspace content is broadcast globally to the LLM on every cycle.
+**gwt-context** implements a concrete selection-broadcast runtime as an MCP server. Specialist processors compete to surface relevant information into a capacity-limited workspace, then a broadcast bus fans the selected content out to independent subscribers that can propose recall, exact resolution, contradiction flags, or follow-up actions. It is not a biological GWT simulator; it is a practical agent-memory architecture with explicit GWT markers.
 
 ### GWT markers implemented
 
@@ -61,6 +61,26 @@ GWT_EMBEDDING_PROVIDER=hash GWT_EMBEDDING_MODEL=hash python -m gwt_context.smoke
 ```
 
 The same command is available after installation as `gwt-context-smoke`.
+
+Run a real stdio MCP client smoke against the packaged server entrypoint:
+
+```bash
+gwt-context-mcp-smoke
+```
+
+Add it to Codex as a local MCP server:
+
+```bash
+codex mcp add gwt-context \
+  --env GWT_EMBEDDING_PROVIDER=hash \
+  --env GWT_EMBEDDING_MODEL=hash \
+  --env GWT_EMBEDDING_DIM=32 \
+  --env GWT_DATA_DIR=/home/netsky/.gwt-context-codex \
+  -- python -m gwt_context
+```
+
+New Codex MCP tools are available to new Codex sessions after the config is
+loaded.
 
 ## MCP Tools
 
@@ -229,6 +249,10 @@ Render trace-heavy results as HTML with:
 python -m tests.benchmarks.render_trace tests/benchmarks/results/<result>.json
 ```
 
+The HTML report groups bus proposals by subscriber/kind, lists inhibited
+proposal keys and rationale, and summarizes workspace changes across trace
+phases.
+
 Run a small local MCP-facing scenario without downloading embedding models:
 
 ```bash
@@ -262,6 +286,12 @@ GWT_EMBEDDING_PROVIDER=hash GWT_EMBEDDING_MODEL=hash \
 python -m tests.benchmarks.ruler_multi_hop \
     --hops 2 --distractors 3 --tasks-per-config 1 --max-tasks 1 \
     --gwt-mode attend
+```
+
+Or use the bounded sanity wrapper:
+
+```bash
+npm run qwen:sanity -- --run --max-tasks 1
 ```
 
 ### RunPod endpoint

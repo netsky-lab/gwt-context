@@ -35,6 +35,14 @@ GWT_EMBEDDING_PROVIDER=hash GWT_EMBEDDING_MODEL=hash python -m gwt_context.smoke
 Expected output is a compact JSON report with `trace_status: "ok"` and a
 resolved graph answer.
 
+Run the real stdio MCP client smoke:
+
+```bash
+python -m gwt_context.mcp_client_smoke
+```
+
+For Codex setup, see [`docs/codex-mcp.md`](codex-mcp.md).
+
 ## Local Usage Loop
 
 ```bash

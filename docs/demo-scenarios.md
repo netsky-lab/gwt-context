@@ -25,6 +25,20 @@ Expected signal:
 - `bus_accepted` is greater than or equal to `1`,
 - `trace_status` is `ok`.
 
+## 1a. Real MCP Stdio Smoke
+
+Command:
+
+```bash
+python -m gwt_context.mcp_client_smoke
+```
+
+What it proves:
+
+- `python -m gwt_context` starts as a real stdio MCP server,
+- an MCP client can list tools, call tools, and read `gwt://attention/last`,
+- the answer path is visible through the public protocol.
+
 ## 2. Collection Resolution
 
 The same command also stores employee-style structured records and runs

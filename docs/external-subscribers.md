@@ -32,6 +32,26 @@ def nli_proposals(context: BroadcastContext) -> tuple[BroadcastProposal, ...]:
 subscriber = ExternalReasoningSubscriber("nli_agent", nli_proposals)
 ```
 
+For OpenAI-compatible endpoints, infrastructure code can build the proposal
+callable without importing provider clients into `application`:
+
+```python
+from gwt_context.infrastructure.external_subscribers import (
+    OpenAICompatibleSubscriberConfig,
+    build_openai_compatible_subscriber,
+)
+
+
+subscriber = build_openai_compatible_subscriber(
+    "nli_agent",
+    OpenAICompatibleSubscriberConfig(
+        api_base="https://example-openai-compatible-endpoint/v1",
+        model="qwen3.6-35b-a3b",
+        api_key="test",
+    ),
+)
+```
+
 The adapter sanitizes proposals:
 
 - rewrites `subscriber` to the configured subscriber name,

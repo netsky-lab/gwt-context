@@ -45,6 +45,8 @@ def render_report(report: dict[str, Any]) -> str:
             ".badge-warn{border-color:#f6c56f;background:#fff7e6;color:#8a5200}",
             ".badge-bad{border-color:#f0a0a0;background:#fff0f0;color:#9d1c1c}",
             ".timeline{margin:10px 0}",
+            ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}",
+            ".mini{border:1px solid #eee;border-radius:6px;padding:8px;background:#fcfcfc}",
             "</style>",
             "</head>",
             "<body>",
@@ -111,6 +113,7 @@ def _render_result(result: dict[str, Any]) -> str:
             trace_summary,
             timeline_html,
             bus_html,
+            _render_workspace_changes(trace),
             trace_html,
             "<h3>Workspace snapshot</h3>",
             f"<pre>{html.escape(workspace)}</pre>",
@@ -126,7 +129,7 @@ def _render_bus_summary(result: dict[str, Any]) -> str:
         if not isinstance(entry, dict):
             continue
         if entry.get("phase") == "broadcast_bus":
-            payload = entry.get("result", {})
+            payload = _entry_payload(entry)
             if isinstance(payload, dict):
                 proposals += len(payload.get("proposals", []))
                 accepted += len(payload.get("accepted", []))
@@ -161,6 +164,8 @@ def _render_bus_summary(result: dict[str, Any]) -> str:
             "<th>ms</th></tr></thead><tbody>",
             rows,
             "</tbody></table>",
+            _render_bus_proposal_groups(result),
+            _render_inhibited_proposals(result),
         ]
     )
 
@@ -214,6 +219,128 @@ def _render_trace_entry(entry: dict[str, Any]) -> str:
         f"<details><summary>{html.escape(str(phase))}</summary>"
         f"<pre>{html.escape(json.dumps(compact, indent=2))}</pre></details>"
     )
+
+
+def _render_bus_proposal_groups(result: dict[str, Any]) -> str:
+    grouped: dict[tuple[str, str], dict[str, int]] = {}
+    for payload in _bus_payloads(result):
+        for state in ("proposals", "accepted", "inhibited"):
+            proposals = payload.get(state, [])
+            if not isinstance(proposals, list):
+                continue
+            for proposal in proposals:
+                if not isinstance(proposal, dict):
+                    continue
+                key = (
+                    str(proposal.get("subscriber", "")),
+                    str(proposal.get("kind", "")),
+                )
+                counts = grouped.setdefault(key, {"proposals": 0, "accepted": 0, "inhibited": 0})
+                counts[state] += 1
+    if not grouped:
+        return ""
+    cards = []
+    for (subscriber, kind), counts in sorted(grouped.items()):
+        cards.append(
+            "<div class=\"mini\">"
+            f"<strong>{html.escape(subscriber)} / {html.escape(kind)}</strong><br>"
+            f"proposals={counts['proposals']} accepted={counts['accepted']} "
+            f"inhibited={counts['inhibited']}"
+            "</div>"
+        )
+    return "<h4>Proposal Groups</h4><div class=\"grid\">" + "".join(cards) + "</div>"
+
+
+def _render_inhibited_proposals(result: dict[str, Any]) -> str:
+    rows = []
+    for payload in _bus_payloads(result):
+        inhibited = payload.get("inhibited", [])
+        if not isinstance(inhibited, list):
+            continue
+        for proposal in inhibited:
+            if not isinstance(proposal, dict):
+                continue
+            proposal_payload = proposal.get("payload", {})
+            if not isinstance(proposal_payload, dict):
+                proposal_payload = {}
+            reason = proposal.get("rationale", "")
+            key = proposal_payload.get("query") or proposal_payload.get("question") or ""
+            rows.append(
+                "<tr>"
+                f"<td>{html.escape(str(proposal.get('subscriber', '')))}</td>"
+                f"<td>{html.escape(str(proposal.get('kind', '')))}</td>"
+                f"<td>{html.escape(str(key))}</td>"
+                f"<td>{html.escape(str(reason))}</td>"
+                "</tr>"
+            )
+    if not rows:
+        return ""
+    return (
+        "<h4>Inhibited Proposals</h4>"
+        "<table><thead><tr><th>Subscriber</th><th>Kind</th><th>Key</th>"
+        "<th>Rationale</th></tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
+
+
+def _render_workspace_changes(trace: Any) -> str:
+    if not isinstance(trace, list):
+        return ""
+    rows = []
+    for entry in trace:
+        if not isinstance(entry, dict):
+            continue
+        workspace = entry.get("workspace_after")
+        if not isinstance(workspace, dict):
+            continue
+        rows.append(
+            "<tr>"
+            f"<td>{html.escape(str(entry.get('phase', '')))}</td>"
+            f"<td>{html.escape(str(workspace.get('occupied_count', '')))}</td>"
+            f"<td>{html.escape(_workspace_preview(workspace))}</td>"
+            "</tr>"
+        )
+    if not rows:
+        return ""
+    return (
+        "<h3>Workspace Changes</h3>"
+        "<table><thead><tr><th>Phase</th><th>Occupied</th><th>Top Items</th>"
+        "</tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
+
+
+def _bus_payloads(result: dict[str, Any]) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    for entry in result.get("trace", []):
+        if not isinstance(entry, dict) or entry.get("phase") != "broadcast_bus":
+            continue
+        payload = _entry_payload(entry)
+        if isinstance(payload, dict):
+            payloads.append(payload)
+    return payloads
+
+
+def _entry_payload(entry: dict[str, Any]) -> Any:
+    result = entry.get("result")
+    if isinstance(result, dict):
+        return result
+    return entry.get("payload", {})
+
+
+def _workspace_preview(workspace: dict[str, Any]) -> str:
+    items = workspace.get("items", [])
+    if not isinstance(items, list):
+        return ""
+    previews = []
+    for item in items[:3]:
+        if not isinstance(item, dict) or item.get("empty"):
+            continue
+        content = " ".join(str(item.get("content", "")).split())
+        previews.append(content[:80])
+    return " | ".join(previews)
 
 
 def _status_badge(status: str) -> str:

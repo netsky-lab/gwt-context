@@ -1,6 +1,6 @@
 [project]
 name = "gwt-context"
-version = "0.2.1"
+version = "0.2.2"
 description = "Global Workspace Theory context management MCP server"
 requires-python = ">=3.11"
 license = "MIT"
@@ -27,6 +27,7 @@ bench = [
 [project.scripts]
 gwt-context = "gwt_context.server:main"
 gwt-context-smoke = "gwt_context.smoke:main"
+gwt-context-mcp-smoke = "gwt_context.mcp_client_smoke:main"
 
 [build-system]
 requires = ["hatchling"]

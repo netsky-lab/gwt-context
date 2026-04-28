@@ -31,12 +31,7 @@ OpenAI-compatible benchmark evaluation.
 Required local gates before release:
 
 ```bash
-pytest -q
-ruff check .
-mypy src
-npm test -- --quiet
-python -m gwt_context.smoke
-python -m build
+python scripts/release_gate.py
 ```
 
 Release thresholds are tracked in `docs/release-thresholds.md`.
@@ -54,6 +49,21 @@ Bus matrix summary:
 ```bash
 python -m tests.benchmarks.bus_matrix --summarize tests/benchmarks/results/*.json
 ```
+
+For a bounded model-backed sanity run against the configured `.env` endpoint:
+
+```bash
+python scripts/qwen_sanity.py --run --max-tasks 1
+```
+
+Latest `max_tasks=1` Qwen sanity on 2026-04-28:
+
+| Slice | Bus | Tasks | GWT | Baseline | Avg GWT Tool Calls | Bus accepted/inhibited |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| RULER advisor | on | 1 | 100% | 100% | 3.0 | 1 / 2 |
+| RULER advisor | off | 1 | 100% | 100% | 3.0 | 0 / 0 |
+| LongBench count | on | 1 | 100% | 100% | 3.0 | 1 / 1 |
+| LongBench count | off | 1 | 100% | 100% | 3.0 | 0 / 0 |
 
 ## Qwen Smoke
 

@@ -40,5 +40,15 @@ jobs:
       - name: Run npm verification
         run: npm test -- --quiet
 
+      - name: Run runtime smokes
+        run: |
+          GWT_EMBEDDING_PROVIDER=hash GWT_EMBEDDING_MODEL=hash python -m gwt_context.smoke
+          GWT_EMBEDDING_PROVIDER=hash GWT_EMBEDDING_MODEL=hash python -m gwt_context.mcp_client_smoke --compact
+          python examples/real_usage_loop.py
+          python examples/external_subscriber_poc.py
+
       - name: Build package
         run: python -m build
+
+      - name: Run boundary checks
+        run: python scripts/release_gate.py --boundary-only
