@@ -215,6 +215,10 @@ class TestFullCycle:
         assert linked.id in {item["id"] for item in buffer_snapshot["items"]}
         assert linked.id in cycle.inspect("stats")["last_link_activations"]
 
+        cycle.run()
+        workspace_snapshot = cycle.inspect("workspace")
+        assert linked.id in {item["id"] for item in workspace_snapshot["items"]}
+
     def test_cycle_publishes_broadcast_to_configured_bus(self, tmp_path):
         """Plain broadcast path invokes subscribers at cycle level."""
         store = SQLiteMemoryStore(db_path=tmp_path / "bus.db")

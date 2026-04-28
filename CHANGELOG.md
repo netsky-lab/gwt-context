@@ -9,6 +9,9 @@
   summaries, proposal grouping, and richer `broadcast_bus` inspect output.
 - Added runtime configuration for broadcast-bus budgets and optional
   OpenAI-compatible external subscribers in the MCP composition root.
+- Added integration regressions proving recurrent linked-memory activation
+  reaches workspace and accepted subscriber queries affect later attention
+  passes.
 - Split Codex MCP memory into project/global namespace guidance, added
   `scripts/clear_codex_memory.py` for safe namespace cleanup, and reconfigured
   the local Codex MCP entries to use project-specific and global data dirs.

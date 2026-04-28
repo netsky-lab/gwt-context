@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), real stdio MCP smoke (`python -m gwt_context.mcp_client_smoke`), and `pytest` baseline of 186 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), real stdio MCP smoke (`python -m gwt_context.mcp_client_smoke`), and `pytest` baseline of 187 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -22,7 +22,8 @@
   proposal grouping, and compact summaries in traces and inspect output.
 - Workspace admission has an ignition threshold through `GWT_MIN_ACTIVATION`.
 - Conscious workspace items reactivate explicit linked memories into the
-  preconscious buffer for recurrent link-following cycles.
+  preconscious buffer for recurrent link-following cycles; integration coverage
+  verifies those reactivated memories can enter workspace on the next cycle.
 - `docs/gwt-runtime-contracts.md` records the concrete preconscious,
   conscious, bus, and admission contracts.
 - `ExternalReasoningSubscriber` defines the port-safe adapter path for future
