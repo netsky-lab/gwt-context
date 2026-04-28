@@ -10,10 +10,14 @@ EXPECTED_TOOLS = {
     "gwt_collection_query",
     "gwt_compete",
     "gwt_evict",
+    "gwt_export_memory",
+    "gwt_import_memory",
     "gwt_inspect",
     "gwt_link",
+    "gwt_memory_profile",
     "gwt_query",
     "gwt_resolve",
+    "gwt_reset",
     "gwt_set_goal",
     "gwt_store",
     "gwt_trace_explain",
@@ -61,7 +65,7 @@ def test_core_tool_response_key_contracts_are_stable(tmp_path) -> None:
     trace = gwt_trace_explain()
     bus = gwt_bus_inspect()
 
-    assert set(store) == {"id", "memory_type", "activation_state", "linked_to", "status"}
+    assert set(store) == {"id", "memory_type", "activation_state", "linked_to", "tags", "status"}
     assert set(query[0]) == {
         "id",
         "content",

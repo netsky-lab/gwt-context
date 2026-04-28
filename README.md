@@ -98,6 +98,10 @@ cleanup.
 | `gwt_resolve` | Resolve a question against runtime structured memory without broadcasting |
 | `gwt_collection_query` | Run exact count/filter/top-k/average/compare operations over runtime structured memory |
 | `gwt_trace_explain` | Explain the most recent explicit attention trace |
+| `gwt_memory_profile` | Inspect active namespace, persisted counts, embedding settings, and structured read-model state |
+| `gwt_export_memory` | Export persisted memory as JSONL without embeddings |
+| `gwt_import_memory` | Import JSONL memory into the active namespace and re-embed records |
+| `gwt_reset` | Clear runtime read models or workspace state with explicit confirmation; does not delete persisted memory |
 | `gwt_evict` | Manual eviction from workspace |
 | `gwt_link` | Bidirectional link between items (enables multi-hop chains) |
 | `gwt_inspect` | Observe workspace, buffer, goals, stats |

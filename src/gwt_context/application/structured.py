@@ -153,6 +153,10 @@ class RuntimeMemoryIndex:
         for content in contents:
             self.add(content)
 
+    def clear(self) -> None:
+        """Clear only the runtime read model; persisted memory remains intact."""
+        self._contents.clear()
+
     def contents(self) -> tuple[str, ...]:
         """Return raw memory contents in insertion order."""
         return tuple(self._contents)

@@ -133,6 +133,10 @@ class IngestionPort(Protocol):
     ) -> list[MemoryItem]:
         ...
 
+    def all_items(self) -> list[MemoryItem]:
+        """Return all persisted memory items for read-model bootstrap/export."""
+        ...
+
 
 @runtime_checkable
 class CyclePort(Protocol):

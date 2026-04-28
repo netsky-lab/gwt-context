@@ -7,7 +7,8 @@ removed without updating tests and changelog.
 ## Tools
 
 - `gwt_store(content, memory_type="semantic", tags?, link_to?)`
-  - Success keys: `id`, `memory_type`, `activation_state`, `linked_to`, `status`
+  - Success keys: `id`, `memory_type`, `activation_state`, `linked_to`, `tags`,
+    `status`
   - Error keys: `error`
 - `gwt_set_goal(description, keywords?, priority=1.0)`
   - Success keys: `goal_id`, `description`, `priority`, `status`
@@ -40,6 +41,30 @@ removed without updating tests and changelog.
   - Success keys: `status`, `broadcast_bus`, `summary`
   - `summary` includes proposal, accepted, inhibited, and subscriber status
     counts from the latest cycle-level bus read model.
+- `gwt_memory_profile()`
+  - Success keys: `status`, `namespace`, `data_dir`, `embedding`,
+    `persisted_item_count`, `runtime_index_count`, `structured_record_count`,
+    `structured_fields`, `counts_by_type`, `counts_by_source`,
+    `restored_runtime_items`, `cycle_stats`, `retention_policy`
+- `gwt_export_memory(memory_type?, tag?)`
+  - Success keys: `status`, `format`, `item_count`, `filters`, `jsonl`
+  - Format is `gwt-memory-jsonl-v1`; embeddings are intentionally omitted and
+    rebuilt during import.
+  - Error keys: `error`, optional `supported_memory_types`
+- `gwt_import_memory(jsonl, default_memory_type="semantic", tags?, admit=false)`
+  - Success keys: `status`, `imported_count`, `imported_ids`, `error_count`,
+    `errors`, `admit`
+  - Imported records receive active namespace tags and are re-embedded into the
+    current namespace.
+  - Error keys: `error`, optional `supported_memory_types`
+- `gwt_reset(scope="runtime", confirm="")`
+  - Supported scopes: `runtime`, `workspace`.
+  - Runtime reset requires `confirm="RESET_RUNTIME"` and clears only in-process
+    structured read models.
+  - Workspace reset requires `confirm="RESET_WORKSPACE"` and evicts current
+    workspace items through `CyclePort`.
+  - Persistent namespace deletion remains outside MCP in local maintenance
+    scripts.
 - `gwt_evict(item_id)`
   - Delegates to `CyclePort.evict_workspace_item`; payload is cycle-defined.
 - `gwt_link(source_id, target_id)`

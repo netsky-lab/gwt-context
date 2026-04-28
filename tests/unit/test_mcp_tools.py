@@ -89,6 +89,7 @@ class TestBoundaryDelegation:
             memory_type=MemoryType.SEMANTIC,
             activation_state=ActivationState.PRECONSCIOUS,
             linked_ids=[],
+            tags=["scope:default", "namespace:default"],
         )
         ingestion = Mock()
         ingestion.ingest = Mock(return_value=item)
@@ -100,6 +101,7 @@ class TestBoundaryDelegation:
 
         cycle.enqueue_for_competition.assert_called_once_with(item)
         assert result["id"] == "stored-1"
+        assert "scope:default" in result["tags"]
         assert result["status"] == "stored and ready for competition"
 
     def test_gwt_inspect_delegates_to_cycle_inspect(self):
@@ -297,6 +299,116 @@ class TestBoundaryDelegation:
         assert top["answer"] == "Idea-001"
         assert top["matched_count"] == 1
         assert average["answer"] == "8.0"
+
+    def test_gwt_collection_query_restores_runtime_index_from_persisted_items(self):
+        cycle = Mock()
+        ingestion = Mock()
+        ingestion.all_items = Mock(
+            return_value=[
+                MemoryItem(
+                    id="idea-1",
+                    content="Idea-001 | type=twitter | topic=GWT | score=9 | status=ready",
+                    memory_type=MemoryType.SEMANTIC,
+                    activation_state=ActivationState.LONG_TERM,
+                ),
+                MemoryItem(
+                    id="idea-2",
+                    content="Idea-002 | type=twitter | topic=memory | score=7 | status=draft",
+                    memory_type=MemoryType.SEMANTIC,
+                    activation_state=ActivationState.LONG_TERM,
+                ),
+            ]
+        )
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        result = _tool_call(mcp, "gwt_collection_query")(
+            operation="filter",
+            field="status",
+            value="ready",
+        )
+
+        assert result["answer"] == "Idea-001"
+        assert result["matched_count"] == 1
+
+    def test_gwt_memory_profile_reports_namespace_and_counts(self):
+        cycle = Mock()
+        cycle.inspect = Mock(return_value={"memory_items": 1})
+        ingestion = Mock()
+        ingestion.all_items = Mock(
+            return_value=[
+                MemoryItem(
+                    id="item-1",
+                    content="Idea-001 | type=twitter | topic=GWT | score=9 | status=ready",
+                    memory_type=MemoryType.SEMANTIC,
+                    source="tool:gwt_store",
+                    tags=["scope:default", "namespace:default"],
+                )
+            ]
+        )
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        result = _tool_call(mcp, "gwt_memory_profile")()
+
+        assert result["status"] == "ok"
+        assert result["persisted_item_count"] == 1
+        assert result["structured_record_count"] == 1
+        assert result["counts_by_type"] == {"semantic": 1}
+        cycle.inspect.assert_called_once_with(target="stats")
+
+    def test_gwt_reset_runtime_requires_confirmation_and_preserves_persistence(self):
+        cycle = Mock()
+        cycle.enqueue_for_competition = Mock()
+        ingestion = Mock()
+        ingestion.ingest = Mock(
+            return_value=MemoryItem(
+                id="item-1",
+                content="Idea-001 | type=twitter | topic=GWT | score=9 | status=ready",
+                memory_type=MemoryType.SEMANTIC,
+                activation_state=ActivationState.PRECONSCIOUS,
+            )
+        )
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        _tool_call(mcp, "gwt_store")("Idea-001 | type=twitter | topic=GWT | score=9 | status=ready")
+        denied = _tool_call(mcp, "gwt_reset")(scope="runtime")
+        reset = _tool_call(mcp, "gwt_reset")(scope="runtime", confirm="RESET_RUNTIME")
+        count_after = _tool_call(mcp, "gwt_collection_query")(operation="count")
+
+        assert denied["error"] == "confirmation required"
+        assert reset["persistent_memory_deleted"] is False
+        assert reset["cleared_runtime_items"] == 1
+        assert count_after["answer"] == "0"
+
+    def test_gwt_export_import_memory_jsonl_round_trip(self):
+        cycle = Mock()
+        cycle.enqueue_for_competition = Mock()
+        original = MemoryItem(
+            id="item-1",
+            content="Imported-001 | type=note | topic=GWT | score=8",
+            memory_type=MemoryType.SEMANTIC,
+            source="tool:gwt_store",
+            tags=["scope:default"],
+        )
+        imported = MemoryItem(
+            id="item-2",
+            content=original.content,
+            memory_type=MemoryType.SEMANTIC,
+            source="tool:gwt_store",
+            tags=["scope:default", "namespace:default"],
+        )
+        ingestion = Mock()
+        ingestion.all_items = Mock(return_value=[original])
+        ingestion.ingest = Mock(return_value=imported)
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        exported = _tool_call(mcp, "gwt_export_memory")()
+        result = _tool_call(mcp, "gwt_import_memory")(exported["jsonl"], admit=True)
+
+        assert exported["format"] == "gwt-memory-jsonl-v1"
+        assert exported["item_count"] == 1
+        assert result["status"] == "ok"
+        assert result["imported_ids"] == ["item-2"]
+        cycle.enqueue_for_competition.assert_called_once_with(imported)
 
     def test_gwt_collection_query_validates_k(self):
         cycle = Mock()

@@ -101,3 +101,7 @@ class IngestionPipeline:
                 break
 
         return items
+
+    def all_items(self) -> list[MemoryItem]:
+        """Return all persisted memory items."""
+        return self._store.get_all_items()

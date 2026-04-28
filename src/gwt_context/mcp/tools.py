@@ -1,9 +1,11 @@
 """MCP tool definitions for GWT-Context.
 
-12 tools that form the external API surface for LLM interaction.
+MCP tools that form the external API surface for LLM interaction.
 Each tool maps to domain/application operations.
 """
 
+import json
+import os
 from collections.abc import Sequence
 from typing import Any
 
@@ -18,7 +20,7 @@ from gwt_context.application.attention import (
     supported_planners,
 )
 from gwt_context.application.structured import RuntimeMemoryIndex, StructuredRecord
-from gwt_context.domain.models import MemoryType
+from gwt_context.domain.models import MemoryItem, MemoryType
 from gwt_context.interfaces.ports import CyclePort, IngestionPort
 
 
@@ -30,6 +32,7 @@ def register_tools(
 ) -> None:
     """Register all GWT tools on the MCP server."""
     runtime_index = RuntimeMemoryIndex()
+    restored_count = _restore_runtime_index(runtime_index, ingestion)
 
     @mcp.tool()
     def gwt_store(
@@ -57,7 +60,7 @@ def register_tools(
             content=content,
             memory_type=mt,
             source="tool:gwt_store",
-            tags=tags,
+            tags=_memory_tags(tags),
             link_to=link_to,
         )
 
@@ -69,7 +72,184 @@ def register_tools(
             "memory_type": item.memory_type.value,
             "activation_state": item.activation_state.value,
             "linked_to": item.linked_ids,
+            "tags": item.tags,
             "status": "stored and ready for competition",
+        }
+
+    @mcp.tool()
+    def gwt_memory_profile() -> dict[str, Any]:
+        """Inspect the active MCP memory namespace and runtime read models."""
+        items = ingestion.all_items()
+        by_type: dict[str, int] = {}
+        by_source: dict[str, int] = {}
+        for item in items:
+            by_type[item.memory_type.value] = by_type.get(item.memory_type.value, 0) + 1
+            source = item.source or "unknown"
+            by_source[source] = by_source.get(source, 0) + 1
+
+        runtime_collection = runtime_index.collection()
+        namespace = _memory_namespace()
+        return {
+            "status": "ok",
+            "namespace": namespace,
+            "data_dir": namespace["data_dir"],
+            "embedding": {
+                "provider": os.environ.get("GWT_EMBEDDING_PROVIDER", "hash"),
+                "model": os.environ.get("GWT_EMBEDDING_MODEL", "hash"),
+                "dim": os.environ.get("GWT_EMBEDDING_DIM"),
+            },
+            "persisted_item_count": len(items),
+            "runtime_index_count": len(runtime_index.contents()),
+            "structured_record_count": len(runtime_collection.records),
+            "structured_fields": list(runtime_collection.field_names),
+            "counts_by_type": by_type,
+            "counts_by_source": by_source,
+            "restored_runtime_items": restored_count,
+            "cycle_stats": cycle.inspect(target="stats"),
+            "retention_policy": {
+                "working_memory_recommendation": (
+                    "Keep working summaries short-lived; export useful records as semantic "
+                    "or procedural memory, then reset the runtime read model."
+                ),
+                "persistent_cleanup": "Use scripts/clear_codex_memory.py for namespace deletion.",
+            },
+        }
+
+    @mcp.tool()
+    def gwt_reset(scope: str = "runtime", confirm: str = "") -> dict[str, Any]:
+        """Reset runtime MCP read models with an explicit confirmation string.
+
+        This tool never deletes persisted SQLite/vector memory. Persistent namespace
+        deletion is intentionally kept in local scripts, outside MCP.
+        """
+        normalized_scope = scope.lower().strip() or "runtime"
+        if normalized_scope == "runtime":
+            if confirm != "RESET_RUNTIME":
+                return {
+                    "error": "confirmation required",
+                    "required_confirm": "RESET_RUNTIME",
+                    "scope": "runtime",
+                }
+            before = len(runtime_index.contents())
+            runtime_index.clear()
+            return {
+                "status": "reset",
+                "scope": "runtime",
+                "cleared_runtime_items": before,
+                "persistent_memory_deleted": False,
+            }
+
+        if normalized_scope == "workspace":
+            if confirm != "RESET_WORKSPACE":
+                return {
+                    "error": "confirmation required",
+                    "required_confirm": "RESET_WORKSPACE",
+                    "scope": "workspace",
+                }
+            workspace = cycle.inspect(target="workspace")
+            items = workspace.get("items", []) if isinstance(workspace, dict) else []
+            evicted: list[str] = []
+            for workspace_item in items:
+                item_id = workspace_item.get("id") if isinstance(workspace_item, dict) else None
+                if isinstance(item_id, str) and item_id:
+                    result = cycle.evict_workspace_item(item_id=item_id)
+                    if result.get("status") == "evicted":
+                        evicted.append(item_id)
+            return {
+                "status": "reset",
+                "scope": "workspace",
+                "evicted_ids": evicted,
+                "persistent_memory_deleted": False,
+            }
+
+        return {
+            "error": f"unsupported reset scope: {scope}",
+            "supported_scopes": ["runtime", "workspace"],
+        }
+
+    @mcp.tool()
+    def gwt_export_memory(
+        memory_type: str | None = None,
+        tag: str | None = None,
+    ) -> dict[str, Any]:
+        """Export persisted memory records as JSONL without embeddings."""
+        mt = _parse_memory_type(memory_type)
+        if memory_type and mt is None:
+            return {
+                "error": f"unsupported memory_type: {memory_type}",
+                "supported_memory_types": [item.value for item in MemoryType],
+            }
+        items = [
+            item for item in ingestion.all_items()
+            if (mt is None or item.memory_type == mt) and (tag is None or tag in item.tags)
+        ]
+        jsonl = "\n".join(json.dumps(_export_item(item), sort_keys=True) for item in items)
+        return {
+            "status": "ok",
+            "format": "gwt-memory-jsonl-v1",
+            "item_count": len(items),
+            "filters": {"memory_type": memory_type, "tag": tag},
+            "jsonl": jsonl,
+        }
+
+    @mcp.tool()
+    def gwt_import_memory(
+        jsonl: str,
+        default_memory_type: str = "semantic",
+        tags: list[str] | None = None,
+        admit: bool = False,
+    ) -> dict[str, Any]:
+        """Import JSONL memory records, re-embedding them into the active namespace."""
+        default_mt = _parse_memory_type(default_memory_type)
+        if default_mt is None:
+            return {
+                "error": f"unsupported default_memory_type: {default_memory_type}",
+                "supported_memory_types": [item.value for item in MemoryType],
+            }
+        if not jsonl.strip():
+            return {"error": "jsonl must not be empty"}
+
+        imported_ids: list[str] = []
+        errors: list[dict[str, Any]] = []
+        for line_number, line in enumerate(jsonl.splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError as exc:
+                errors.append({"line": line_number, "error": str(exc)})
+                continue
+            if not isinstance(payload, dict):
+                errors.append({"line": line_number, "error": "line must decode to an object"})
+                continue
+            content = str(payload.get("content", "")).strip()
+            if not content:
+                errors.append({"line": line_number, "error": "content must not be empty"})
+                continue
+            mt = _parse_memory_type(str(payload.get("memory_type", default_mt.value))) or default_mt
+            exported_tags = payload.get("tags", [])
+            if not isinstance(exported_tags, list):
+                exported_tags = []
+            item_tags = _memory_tags([*exported_tags, *(tags or [])])
+            item = ingestion.ingest(
+                content=content,
+                memory_type=mt,
+                source=str(payload.get("source") or "tool:gwt_import_memory"),
+                tags=item_tags,
+                link_to=None,
+            )
+            runtime_index.add(item.content)
+            imported_ids.append(item.id)
+            if admit:
+                cycle.enqueue_for_competition(item)
+
+        return {
+            "status": "ok" if not errors else "partial",
+            "imported_count": len(imported_ids),
+            "imported_ids": imported_ids,
+            "error_count": len(errors),
+            "errors": errors,
+            "admit": admit,
         }
 
     @mcp.tool()
@@ -471,6 +651,54 @@ def _normalize_supported_planner(planner: str) -> str | None:
     if normalized in supported_planners():
         return normalized
     return None
+
+
+def _restore_runtime_index(runtime_index: RuntimeMemoryIndex, ingestion: IngestionPort) -> int:
+    items = ingestion.all_items()
+    if not isinstance(items, list):
+        return 0
+    runtime_index.extend([item.content for item in items if item.content])
+    return len(runtime_index.contents())
+
+
+def _memory_namespace() -> dict[str, str]:
+    data_dir = os.path.expanduser(os.environ.get("GWT_DATA_DIR", "~/.gwt-context"))
+    parts = [part for part in data_dir.split(os.sep) if part]
+    scope = "default"
+    name = "default"
+    if "projects" in parts:
+        scope = "project"
+        index = parts.index("projects")
+        if index + 1 < len(parts):
+            name = parts[index + 1]
+    elif parts and parts[-1] == "global":
+        scope = "global"
+        name = "global"
+    return {"scope": scope, "name": name, "data_dir": data_dir}
+
+
+def _memory_tags(tags: Sequence[str] | None) -> list[str]:
+    namespace = _memory_namespace()
+    merged = list(tags or [])
+    for tag in (f"scope:{namespace['scope']}", f"namespace:{namespace['name']}"):
+        if tag not in merged:
+            merged.append(tag)
+    return merged
+
+
+def _export_item(item: MemoryItem) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "content": item.content,
+        "summary": item.summary,
+        "memory_type": item.memory_type.value,
+        "activation_state": item.activation_state.value,
+        "source": item.source,
+        "tags": item.tags,
+        "linked_ids": item.linked_ids,
+        "created_at": item.created_at.isoformat(),
+        "last_accessed": item.last_accessed.isoformat(),
+    }
 
 
 def _parse_memory_type(memory_type: str | None) -> MemoryType | None:
