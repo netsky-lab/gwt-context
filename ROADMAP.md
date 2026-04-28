@@ -24,6 +24,8 @@
   preconscious buffer for recurrent link-following cycles.
 - `docs/gwt-runtime-contracts.md` records the concrete preconscious,
   conscious, bus, and admission contracts.
+- `ExternalReasoningSubscriber` defines the port-safe adapter path for future
+  LLM/NLI subscriber loops without coupling application code to provider SDKs.
 - Task onboarding constraint is required in both `AGENTS.md` and task planning:
   - read `ARCHITECTURE.md` first,
   - record in/out boundaries, forbidden imports, and forbidden coupling checks,
@@ -96,6 +98,7 @@
     `BENCHMARK_ATTEND_PASSES` until benchmark evidence justifies a new default.
   - Structured collection tasks have explicit release gates in benchmark
     reports for count, filter, aggregate, synthesis, and top-k task families.
+  - `docs/release-thresholds.md` records the blocking gates for release tags.
 
 ## Medium-term
 

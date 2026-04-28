@@ -39,6 +39,8 @@ python -m gwt_context.smoke
 python -m build
 ```
 
+Release thresholds are tracked in `docs/release-thresholds.md`.
+
 Boundary checks:
 
 ```bash
@@ -78,26 +80,40 @@ python -m tests.benchmarks.longbench_pro \
   --records 12 --tasks-per-config 1 --max-tasks 5 --gwt-mode attend
 ```
 
-Latest bounded Qwen smoke on 2026-04-27:
+Latest Qwen release matrix on 2026-04-28:
 
 | Slice | Bus | Tasks | GWT | Baseline | Avg GWT Tool Calls | Bus accepted/inhibited |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| RULER advisor | on | 2 | 100% | 100% | 3.0 | 2 / 4 |
-| RULER advisor | off | 2 | 100% | 100% | 3.0 | 0 / 0 |
-| LongBench count/filter smoke | on | 2 | 100% | 100% | 3.0 | 2 / 2 |
-| LongBench count/filter smoke | off | 2 | 100% | 100% | 3.0 | 0 / 0 |
+| RULER advisor/workplace/discovery | on | 12 | 100% | 100% | 3.0 | 12 / 24 |
+| RULER advisor/workplace/discovery | off | 12 | 100% | 100% | 3.0 | 0 / 0 |
+| LongBench count/filter/aggregate/top_k/synthesis | on | 10 | 100% | 100% | 3.0 | 10 / 10 |
+| LongBench count/filter/aggregate/top_k/synthesis | off | 10 | 100% | 100% | 3.0 | 0 / 0 |
 
-The latest bounded matrix was run with:
+The release matrix was run with RULER chain types
+`advisor/workplace/discovery`, hops `2,3`, distractors `3,10`, and LongBench
+records `12,30` across all five task types. Bus subscriber timeout/error count
+was `0 / 0` in all bus-on reports.
 
 ```bash
-python -m tests.benchmarks.bus_matrix --run --max-tasks 2
+GWT_EMBEDDING_PROVIDER=hash GWT_EMBEDDING_MODEL=hash GWT_EMBEDDING_DIM=64 \
+BENCHMARK_CONCURRENCY=4 BENCHMARK_ATTEND_BROADCAST_BUS=1 \
+python -m tests.benchmarks.ruler_multi_hop \
+  --chain-type advisor --hops 2 3 --distractors 3 10 \
+  --tasks-per-config 1 --gwt-mode attend
 ```
 
-The current bounded slices show bus resolution activity without extra tool-call
-cost after deterministic `resolve_answer` suppresses lower-priority recall
-queries. LongBench bus-on doubled evidence precision on the count/filter smoke
-slice (28.6% vs 14.3%) with no accuracy/tool-call regression. This is still a
-small smoke, not a full regression matrix.
+Repeat for `workplace`, `discovery`, then repeat all commands with
+`BENCHMARK_ATTEND_BROADCAST_BUS=0`; run LongBench with:
+
+```bash
+python -m tests.benchmarks.longbench_pro \
+  --task-types count filter aggregate top_k synthesis \
+  --records 12 30 --tasks-per-config 1 --gwt-mode attend
+```
+
+The current release matrix shows bus resolution activity without accuracy or
+tool-call regression after deterministic `resolve_answer` suppresses
+lower-priority recall queries.
 
 Benchmark JSON outputs are generated under ignored `tests/benchmarks/results/`
 and must not be committed.

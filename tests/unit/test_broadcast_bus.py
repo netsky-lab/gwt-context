@@ -8,6 +8,7 @@ from gwt_context.application.broadcast_bus import (
     BroadcastContext,
     BroadcastProposal,
     ContradictionCheckerSubscriber,
+    ExternalReasoningSubscriber,
     RelationContinuationSubscriber,
     SemanticRecallSubscriber,
     StructuredResolverSubscriber,
@@ -143,3 +144,28 @@ def test_contradiction_checker_flags_structured_record_conflicts() -> None:
 
     assert proposals[0].kind == "flag_contradiction"
     assert proposals[0].payload["conflicts"][0]["record_id"] == "Employee-001"
+
+
+def test_external_reasoning_subscriber_sanitizes_injected_proposals() -> None:
+    def external(_context: BroadcastContext) -> tuple[BroadcastProposal, ...]:
+        return (
+            BroadcastProposal(
+                subscriber="raw",
+                kind="flag_contradiction",
+                priority=0.9,
+                rationale="nli",
+                payload={"label": "contradiction"},
+            ),
+            BroadcastProposal(
+                subscriber="raw",
+                kind="unsupported",
+                priority=1.0,
+                rationale="bad",
+            ),
+        )
+
+    proposals = ExternalReasoningSubscriber("nli_agent", external).propose(_context())
+
+    assert len(proposals) == 1
+    assert proposals[0].subscriber == "nli_agent"
+    assert proposals[0].kind == "flag_contradiction"

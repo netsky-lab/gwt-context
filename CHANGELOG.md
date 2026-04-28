@@ -2,6 +2,9 @@
 
 ## 2026-04-28
 
+- Added the `v0.2.0` release threshold matrix, local quickstart, external
+  subscriber adapter documentation, and `ExternalReasoningSubscriber` for
+  port-safe LLM/NLI proposal generators.
 - Added bus subscriber execution reports with timeout/error statuses, explicit
   `BusAdmissionPolicy` decisions, structured record contradiction detection,
   `gwt_bus_inspect`, bus on/off matrix helpers, trace bus summaries, and the

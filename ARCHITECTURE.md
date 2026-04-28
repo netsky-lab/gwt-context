@@ -102,6 +102,9 @@
   recurrent link-following inside application boundaries.
 - The concrete runtime state/admission contract is documented in
   `docs/gwt-runtime-contracts.md`.
+- `ExternalReasoningSubscriber` adapts injected LLM/NLI/agent-loop proposal
+  functions into the bus without importing provider SDKs into the application
+  layer; provider wiring belongs in infrastructure or deployment composition.
 - Benchmark resolvers are adapters under `tests/benchmarks/controlled_rules.py`; production MCP handlers do not import benchmark code.
 
 ### 3) Explicit key data path

@@ -136,6 +136,9 @@ links instead of only parsing names from rendered broadcast text.
 
 The strict state/admission rules are documented in
 [`docs/gwt-runtime-contracts.md`](docs/gwt-runtime-contracts.md).
+Start from [`docs/quickstart.md`](docs/quickstart.md) for local usage and
+[`docs/external-subscribers.md`](docs/external-subscribers.md) for LLM/NLI
+subscriber adapters.
 
 MCP clients can call `gwt_attend(question, keywords?, k?, planner?)` for this path without
 manually sequencing `gwt_set_goal`, `gwt_query(admit=true)`, and `gwt_broadcast`.

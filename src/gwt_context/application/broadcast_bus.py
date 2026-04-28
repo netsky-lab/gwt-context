@@ -62,6 +62,14 @@ class BroadcastSubscriber(Protocol):
         ...
 
 
+class ExternalProposalFn(Protocol):
+    """Callable boundary for injected LLM/NLI/agent-loop subscribers."""
+
+    def __call__(self, context: BroadcastContext) -> Sequence[BroadcastProposal]:
+        """Return externally generated proposals for a broadcast context."""
+        ...
+
+
 @dataclass(frozen=True)
 class BroadcastBusResult:
     """Collected and arbitrated proposals for one broadcast event."""
@@ -198,6 +206,39 @@ class BroadcastBus:
             priority=priority,
             rationale=f"{proposal.rationale} Repeated proposal inhibited x{count}.",
         )
+
+
+class ExternalReasoningSubscriber:
+    """Port-safe adapter for external LLM/NLI/agent-loop proposal generators."""
+
+    def __init__(
+        self,
+        name: str,
+        proposal_fn: ExternalProposalFn,
+        *,
+        allowed_kinds: Sequence[str] = (
+            "query_memory",
+            "resolve_answer",
+            "flag_contradiction",
+            "ask_followup",
+        ),
+        min_priority: float = 0.0,
+    ) -> None:
+        self.name = name
+        self._proposal_fn = proposal_fn
+        self._allowed_kinds = frozenset(allowed_kinds)
+        self._min_priority = min_priority
+
+    def propose(self, context: BroadcastContext) -> tuple[BroadcastProposal, ...]:
+        """Return sanitized proposals from the injected external processor."""
+        proposals = []
+        for proposal in self._proposal_fn(context):
+            if proposal.kind not in self._allowed_kinds:
+                continue
+            if proposal.priority < self._min_priority:
+                continue
+            proposals.append(replace(proposal, subscriber=self.name))
+        return tuple(proposals)
 
 
 class StructuredResolverSubscriber:
