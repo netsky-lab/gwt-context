@@ -40,6 +40,23 @@ Latest Qwen matrix on 2026-04-28:
 | LongBench count/filter/aggregate/top_k/synthesis | on | 10 | 100% | 100% | 3.0 | 10 / 10 | 0 / 0 |
 | LongBench count/filter/aggregate/top_k/synthesis | off | 10 | 100% | 100% | 3.0 | 0 / 0 | 0 / 0 |
 
-All blocking release gates pass for `v0.2.0`. For `v0.3.0`, regenerate the
-matrix after the memory-management and external-subscriber runtime changes and
-confirm arbitration reason counts are present in the summary.
+All blocking release gates passed for `v0.2.0`. `v0.3.0` now has a bounded RC
+sanity run after the memory-management and external-subscriber runtime changes;
+the final tag still needs the larger release matrix refreshed.
+
+## Current v0.3.0 RC Sanity
+
+Latest bounded Qwen sanity on 2026-04-28 after memory management, bus budgets,
+competition reasons, and structured parser expansion:
+
+| Slice | Bus | Tasks | GWT | Baseline | Avg Calls | Bus accepted/inhibited | Timeout/error |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| RULER advisor | on | 2 | 100.0% | 100.0% | 3.0 | 2 / 4 | 0 / 0 |
+| RULER advisor | off | 2 | 100.0% | 100.0% | 3.0 | 0 / 0 | 0 / 0 |
+| LongBench count/filter | on | 2 | 100.0% | 100.0% | 3.0 | 2 / 2 | 0 / 0 |
+| LongBench count/filter | off | 2 | 100.0% | 100.0% | 3.0 | 0 / 0 | 0 / 0 |
+
+Bus inhibition reasons were present in the summary:
+`resolved_answer_present=4` for RULER and `resolved_answer_present=2` for
+LongBench. This satisfies the bounded RC sanity gate; it does not replace the
+larger release matrix for a final tag.

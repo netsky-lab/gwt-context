@@ -235,6 +235,8 @@ python -m tests.benchmarks.longbench_pro
 See [`tests/benchmarks/README.md`](tests/benchmarks/README.md) for the full variable matrix, command examples, and reproducible output behavior.
 See [`docs/attention-controller.md`](docs/attention-controller.md) for the architecture note behind the controlled/hybrid design.
 See [`docs/release-readiness.md`](docs/release-readiness.md) for current release gates and Qwen smoke status.
+See [`docs/honest-gwt-report.md`](docs/honest-gwt-report.md) for the current GWT claim and limitations.
+See [`docs/dogfood-report.md`](docs/dogfood-report.md) for the latest real MCP/Qwen dogfood evidence.
 See [`docs/mcp-tool-contracts.md`](docs/mcp-tool-contracts.md) for stable MCP response shapes.
 
 Each benchmark runs GWT mode (with tools) and baseline mode (all context in prompt) for comparison.

@@ -42,6 +42,12 @@
 - Codex memory is split into project/global namespaces, with a cleanup helper
   for safe local memory hygiene. Bootstrap and health scripts provide dry-run
   MCP registration commands, namespace inspection, and temp-dir stdio smoke.
+- `docs/dogfood-report.md` records the latest local MCP usage loop, external
+  subscriber POC, Codex MCP health, and bounded Qwen sanity evidence.
+- `docs/honest-gwt-report.md` records the current defensible GWT claim and the
+  remaining gap to fully independent processor loops.
+- GitHub Pages deployment from `docs/` is available through the Pages workflow,
+  subject to repository Pages settings allowing Actions deployments.
 - MCP memory management now covers namespace profile, JSONL import/export,
   runtime read-model reset, namespace tags on new records, and structured
   read-model bootstrap from persisted items after server startup. Confirmed

@@ -1,6 +1,6 @@
 # Release Readiness
 
-Status as of 2026-04-27: release candidate for local MCP use and bounded
+Status as of 2026-04-28: release candidate for local MCP use and bounded
 OpenAI-compatible benchmark evaluation.
 
 ## What Is Ready
@@ -10,6 +10,11 @@ OpenAI-compatible benchmark evaluation.
   `gwt-context-smoke`.
 - Runtime tools for store/query/broadcast, explicit attend, exact resolve,
   collection query, relation graph paths, trace explanation, link/evict/inspect.
+- Runtime memory maintenance tools for namespace profile, JSONL backup/restore,
+  runtime reset, confirmed persistent reset, deduplicating import, and
+  working-memory compaction.
+- Runtime collection parsing for key-value records, JSONL, and Markdown tables
+  with exact count/filter/top-k/average/sum/distinct/min/max/compare.
 - Cycle-level post-broadcast subscriber bus for independent structured resolve,
   semantic recall, relation continuation, contradiction checking, and plan
   critique proposals. `gwt_attend` applies accepted proposal kinds through
@@ -54,17 +59,21 @@ python -m tests.benchmarks.analyze_results tests/benchmarks/results/*.json
 For a bounded model-backed sanity run against the configured `.env` endpoint:
 
 ```bash
-python scripts/qwen_sanity.py --run --max-tasks 1
+python scripts/qwen_sanity.py --run --max-tasks 2
 ```
 
-Latest `max_tasks=1` Qwen sanity on 2026-04-28:
+Latest `max_tasks=2` Qwen sanity on 2026-04-28:
 
 | Slice | Bus | Tasks | GWT | Baseline | Avg GWT Tool Calls | Bus accepted/inhibited |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| RULER advisor | on | 1 | 100% | 100% | 3.0 | 1 / 2 |
-| RULER advisor | off | 1 | 100% | 100% | 3.0 | 0 / 0 |
-| LongBench count | on | 1 | 100% | 100% | 3.0 | 1 / 1 |
-| LongBench count | off | 1 | 100% | 100% | 3.0 | 0 / 0 |
+| RULER advisor | on | 2 | 100% | 100% | 3.0 | 2 / 4 |
+| RULER advisor | off | 2 | 100% | 100% | 3.0 | 0 / 0 |
+| LongBench count/filter | on | 2 | 100% | 100% | 3.0 | 2 / 2 |
+| LongBench count/filter | off | 2 | 100% | 100% | 3.0 | 0 / 0 |
+
+Dogfood evidence is recorded in `docs/dogfood-report.md`. The strongest
+defensible GWT claim and remaining caveats are recorded in
+`docs/honest-gwt-report.md`.
 
 ## Qwen Smoke
 
@@ -137,7 +146,5 @@ proposal counts against the default bus-on run.
 
 - Larger benchmark matrix with more distractors, more records, and multiple
   random seeds.
-- Fresh `v0.3.0` bus on/off matrix after memory management and external
-  subscriber wiring, including bus inhibition reason counts.
 - Publishing to PyPI or an internal package registry.
-- Hosted documentation for MCP client configuration examples.
+- Larger hosted documentation with generated API references.
