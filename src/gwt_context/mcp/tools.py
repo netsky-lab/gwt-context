@@ -675,6 +675,46 @@ def register_tools(
                 metadata={"metric": metric, "criteria": criteria},
             )
 
+        if normalized_operation == "sum":
+            if metric is None:
+                return {"error": "sum requires metric"}
+            total, records = collection.sum(metric, criteria)
+            answer = f"{total:.1f}" if total is not None else "0.0"
+            return _collection_query_payload(
+                operation="sum",
+                answer=answer,
+                records=records,
+                metadata={"metric": metric, "criteria": criteria},
+            )
+
+        if normalized_operation == "distinct":
+            if field is None:
+                return {"error": "distinct requires field"}
+            values, records = collection.distinct(field, criteria)
+            answer = ", ".join(values) if values else "none"
+            return _collection_query_payload(
+                operation="distinct",
+                answer=answer,
+                records=records,
+                metadata={"field": field, "criteria": criteria, "values": list(values)},
+            )
+
+        if normalized_operation in {"min", "max"}:
+            if metric is None:
+                return {"error": f"{normalized_operation} requires metric"}
+            record, records = (
+                collection.minimum(metric, criteria)
+                if normalized_operation == "min"
+                else collection.maximum(metric, criteria)
+            )
+            answer = record.record_id if record is not None else "none"
+            return _collection_query_payload(
+                operation=normalized_operation,
+                answer=answer,
+                records=(record,) if record is not None else records,
+                metadata={"metric": metric, "criteria": criteria},
+            )
+
         if normalized_operation == "compare":
             if not (group_field and group_a and group_b and metric):
                 return {"error": "compare requires group_field, group_a, group_b, and metric"}
@@ -699,7 +739,17 @@ def register_tools(
 
         return {
             "error": f"unsupported collection operation: {operation}",
-            "supported_operations": ["count", "filter", "top_k", "average", "compare"],
+            "supported_operations": [
+                "count",
+                "filter",
+                "top_k",
+                "average",
+                "sum",
+                "distinct",
+                "min",
+                "max",
+                "compare",
+            ],
         }
 
     @mcp.tool()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -74,7 +75,10 @@ class CollectionIndex:
     @classmethod
     def from_chunks(cls, chunks: Sequence[str]) -> CollectionIndex:
         """Build a collection index from raw memory chunks."""
-        return cls([record for chunk in chunks if (record := parse_record(chunk)) is not None])
+        records: list[StructuredRecord] = []
+        for chunk in chunks:
+            records.extend(parse_records(chunk))
+        return cls(records)
 
     @property
     def records(self) -> tuple[StructuredRecord, ...]:
@@ -135,6 +139,64 @@ class CollectionIndex:
         if not numeric_values:
             return None, tuple(matched)
         return sum(numeric_values) / len(numeric_values), tuple(matched)
+
+    def distinct(
+        self,
+        field_name: str,
+        criteria: Mapping[str, str],
+    ) -> tuple[tuple[str, ...], tuple[StructuredRecord, ...]]:
+        """Return distinct field values for records matching criteria."""
+        matched = self.filter_equals(criteria) if criteria else self._records
+        normalized_field = normalize_field_name(field_name)
+        values = {
+            record.text(normalized_field)
+            for record in matched
+            if record.text(normalized_field)
+        }
+        return tuple(sorted(values, key=normalize_value)), tuple(matched)
+
+    def sum(
+        self,
+        metric: str,
+        criteria: Mapping[str, str],
+    ) -> tuple[float | None, tuple[StructuredRecord, ...]]:
+        """Sum a numeric metric over records matching criteria."""
+        matched = self.filter_equals(criteria) if criteria else self._records
+        values = [record.number(metric) for record in matched]
+        numeric_values = [value for value in values if value is not None]
+        if not numeric_values:
+            return None, tuple(matched)
+        return sum(numeric_values), tuple(matched)
+
+    def minimum(
+        self,
+        metric: str,
+        criteria: Mapping[str, str],
+    ) -> tuple[StructuredRecord | None, tuple[StructuredRecord, ...]]:
+        """Return the matching record with the smallest numeric metric."""
+        matched = self.filter_equals(criteria) if criteria else self._records
+        ranked = [record for record in matched if record.number(metric) is not None]
+        if not ranked:
+            return None, tuple(matched)
+        return min(
+            ranked,
+            key=lambda record: (record.number(metric) or 0.0, _record_sort_key(record.record_id)),
+        ), tuple(matched)
+
+    def maximum(
+        self,
+        metric: str,
+        criteria: Mapping[str, str],
+    ) -> tuple[StructuredRecord | None, tuple[StructuredRecord, ...]]:
+        """Return the matching record with the largest numeric metric."""
+        matched = self.filter_equals(criteria) if criteria else self._records
+        ranked = [record for record in matched if record.number(metric) is not None]
+        if not ranked:
+            return None, tuple(matched)
+        return max(
+            ranked,
+            key=lambda record: (record.number(metric) or 0.0, _record_sort_key(record.record_id)),
+        ), tuple(matched)
 
 
 class RuntimeMemoryIndex:
@@ -333,6 +395,64 @@ def resolve_collection_evidence(
             metadata={"metric": metric, "criteria": dict(average_criteria)},
         )
 
+    total = _sum_request(question, index)
+    if total is not None:
+        metric, sum_criteria = total
+        value, matched = index.sum(metric, sum_criteria)
+        answer = f"{value:.1f}" if value is not None else "0.0"
+        return _collection_evidence(
+            strategy=f"structured_sum_{metric}",
+            operation="sum",
+            answer=answer,
+            records=matched,
+            lines=[
+                f"Exact sum: {metric} = {answer} for {_criteria_text(sum_criteria)}.",
+                *_record_metric_lines(matched, metric),
+            ],
+            metadata={"metric": metric, "criteria": dict(sum_criteria)},
+        )
+
+    extrema = _extrema_request(question, index)
+    if extrema is not None:
+        operation, metric, extrema_criteria = extrema
+        record, matched = (
+            index.minimum(metric, extrema_criteria)
+            if operation == "min"
+            else index.maximum(metric, extrema_criteria)
+        )
+        if record is None:
+            return None
+        return _collection_evidence(
+            strategy=f"structured_{operation}_{metric}",
+            operation=operation,
+            answer=record.record_id,
+            records=(record,),
+            lines=[
+                f"Exact {operation}: {record.record_id} has {metric}={record.text(metric)}.",
+            ],
+            metadata={
+                "metric": metric,
+                "criteria": dict(extrema_criteria),
+                "candidate_count": len(matched),
+            },
+        )
+
+    distinct = _distinct_request(question, index)
+    if distinct is not None:
+        field_name, distinct_criteria = distinct
+        values, matched = index.distinct(field_name, distinct_criteria)
+        answer = ", ".join(values) if values else "none"
+        return _collection_evidence(
+            strategy=f"structured_distinct_{field_name}",
+            operation="distinct",
+            answer=answer,
+            records=matched,
+            lines=[
+                f"Exact distinct {field_name}: {answer}.",
+            ],
+            metadata={"field": field_name, "criteria": dict(distinct_criteria)},
+        )
+
     comparison = _comparison_request(question, index)
     if comparison is not None:
         group_field, metric, value_a, value_b = comparison
@@ -420,6 +540,20 @@ def collection_evidence_to_dict(evidence: CollectionEvidence) -> dict[str, Any]:
     }
 
 
+def parse_records(chunk: str) -> tuple[StructuredRecord, ...]:
+    """Parse one or more record-like memory chunks."""
+    records = _parse_jsonl_records(chunk)
+    if records:
+        return records
+
+    records = _parse_markdown_table_records(chunk)
+    if records:
+        return records
+
+    record = parse_record(chunk)
+    return (record,) if record is not None else ()
+
+
 def parse_record(chunk: str) -> StructuredRecord | None:
     """Parse one record-like memory chunk."""
     employee = _parse_employee_record(chunk)
@@ -431,6 +565,81 @@ def parse_record(chunk: str) -> StructuredRecord | None:
         return None
     record_id = _record_id_from_fields(fields, chunk)
     return StructuredRecord(record_id=record_id, fields=fields, raw=chunk)
+
+
+def _parse_jsonl_records(chunk: str) -> tuple[StructuredRecord, ...]:
+    records: list[StructuredRecord] = []
+    for line in chunk.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("{") or not stripped.endswith("}"):
+            continue
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        fields = _json_fields(payload)
+        if not fields:
+            continue
+        records.append(
+            StructuredRecord(
+                record_id=_record_id_from_fields(fields, stripped),
+                fields=fields,
+                raw=stripped,
+            )
+        )
+    return tuple(records)
+
+
+def _json_fields(payload: Mapping[str, object]) -> dict[str, Scalar]:
+    fields: dict[str, Scalar] = {}
+    for key, value in payload.items():
+        if isinstance(value, bool):
+            fields[normalize_field_name(key)] = str(value).lower()
+        elif isinstance(value, int | float):
+            fields[normalize_field_name(key)] = float(value)
+        elif isinstance(value, str):
+            normalized_key = normalize_field_name(key)
+            fields[normalized_key] = _parse_field_scalar(normalized_key, value)
+    return fields
+
+
+def _parse_markdown_table_records(chunk: str) -> tuple[StructuredRecord, ...]:
+    lines = [line.strip() for line in chunk.splitlines() if line.strip().startswith("|")]
+    if len(lines) < 3:
+        return ()
+    header = _markdown_cells(lines[0])
+    separator = _markdown_cells(lines[1])
+    if not header or not _is_markdown_separator(separator):
+        return ()
+
+    records: list[StructuredRecord] = []
+    for line in lines[2:]:
+        cells = _markdown_cells(line)
+        if len(cells) != len(header):
+            continue
+        fields = {
+            normalize_field_name(key): _parse_field_scalar(normalize_field_name(key), value)
+            for key, value in zip(header, cells, strict=True)
+        }
+        raw = " | ".join(cells)
+        records.append(
+            StructuredRecord(
+                record_id=_record_id_from_fields(fields, raw),
+                fields=fields,
+                raw=line,
+            )
+        )
+    return tuple(records)
+
+
+def _markdown_cells(line: str) -> tuple[str, ...]:
+    return tuple(cell.strip() for cell in line.strip().strip("|").split("|"))
+
+
+def _is_markdown_separator(cells: Sequence[str]) -> bool:
+    return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells)
 
 
 def parse_relation_edges(chunk: str) -> tuple[RelationEdge, ...]:
@@ -597,6 +806,12 @@ def _parse_scalar(value: str) -> Scalar:
     return number if number is not None else stripped
 
 
+def _parse_field_scalar(field_name: str, value: str) -> Scalar:
+    if field_name in {"id", "name", "title", "record"}:
+        return value.strip().strip("'\"")
+    return _parse_scalar(value)
+
+
 def _parse_number(value: str) -> float | None:
     match = re.search(r"-?\d+(?:\.\d+)?", value)
     return float(match.group(0)) if match else None
@@ -671,6 +886,50 @@ def _average_request(
     return metric, criteria
 
 
+def _sum_request(
+    question: str,
+    index: CollectionIndex,
+) -> tuple[str, dict[str, str]] | None:
+    match = re.search(r"\b(?:sum|total)\s+(.+?)(?:\s+for|\s+where|\?|$)", question, re.I)
+    if not match:
+        return None
+    metric = _best_field_name(index, match.group(1), numeric=True)
+    return metric, _criteria_from_question(question)
+
+
+def _extrema_request(
+    question: str,
+    index: CollectionIndex,
+) -> tuple[str, str, dict[str, str]] | None:
+    match = re.search(
+        r"\b(lowest|smallest|min(?:imum)?|highest|largest|max(?:imum)?)"
+        r"\s+(.+?)(?:\s+for|\s+where|\?|$)",
+        question,
+        re.I,
+    )
+    if not match:
+        return None
+    operation_word, metric_request = match.groups()
+    operation = (
+        "min"
+        if operation_word.lower() in {"lowest", "smallest", "min", "minimum"}
+        else "max"
+    )
+    metric = _best_field_name(index, metric_request, numeric=True)
+    return operation, metric, _criteria_from_question(question)
+
+
+def _distinct_request(
+    question: str,
+    index: CollectionIndex,
+) -> tuple[str, dict[str, str]] | None:
+    match = re.search(r"\b(?:distinct|unique)\s+(.+?)(?:\s+for|\s+where|\?|$)", question, re.I)
+    if not match:
+        return None
+    field_name = _best_field_name(index, match.group(1), numeric=False)
+    return field_name, _criteria_from_question(question)
+
+
 def _comparison_request(
     question: str,
     index: CollectionIndex,
@@ -691,6 +950,9 @@ def _best_field_name(index: CollectionIndex, requested: str, *, numeric: bool = 
     candidates = index.numeric_field_names if numeric else index.field_names
     if requested_name in candidates:
         return requested_name
+    singular_name = requested_name[:-1] if requested_name.endswith("s") else requested_name
+    if singular_name in candidates:
+        return singular_name
     requested_tokens = set(requested_name.split("_"))
     best = ""
     best_overlap = 0

@@ -96,7 +96,7 @@ cleanup.
 | `gwt_query` | Semantic search over long-term memory, optionally admitted to competition |
 | `gwt_attend` | One-call goal-directed attention pass with semantic, structured, graph, hybrid, or auto planning |
 | `gwt_resolve` | Resolve a question against runtime structured memory without broadcasting |
-| `gwt_collection_query` | Run exact count/filter/top-k/average/compare operations over runtime structured memory |
+| `gwt_collection_query` | Run exact count/filter/top-k/average/sum/distinct/min/max/compare operations over runtime structured memory |
 | `gwt_trace_explain` | Explain the most recent explicit attention trace |
 | `gwt_memory_profile` | Inspect active namespace, persisted counts, embedding settings, and structured read-model state |
 | `gwt_backup_memory` | Produce a JSONL backup payload with namespace metadata |

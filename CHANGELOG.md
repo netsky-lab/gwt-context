@@ -11,6 +11,8 @@
   and exposed configured subscribers/settings in `broadcast_bus` inspect output.
 - Added competition reason breakdowns for admitted, evicted, kept,
   below-threshold, and eligible-but-not-selected candidates.
+- Added JSONL and Markdown-table structured record parsing plus exact
+  `sum`, `distinct`, `min`, and `max` runtime collection operations.
 - Added MCP memory management tools for namespace profiling, runtime reset,
   JSONL export/import, namespace tagging on stored records, and structured
   read-model restoration from persisted memory after MCP startup.

@@ -298,10 +298,32 @@ class TestBoundaryDelegation:
             field="type",
             value="twitter",
         )
+        total = _tool_call(mcp, "gwt_collection_query")(
+            operation="sum",
+            metric="score",
+            field="type",
+            value="twitter",
+        )
+        distinct = _tool_call(mcp, "gwt_collection_query")(
+            operation="distinct",
+            field="topic",
+        )
+        minimum = _tool_call(mcp, "gwt_collection_query")(
+            operation="min",
+            metric="score",
+        )
+        maximum = _tool_call(mcp, "gwt_collection_query")(
+            operation="max",
+            metric="score",
+        )
 
         assert top["answer"] == "Idea-001"
         assert top["matched_count"] == 1
         assert average["answer"] == "8.0"
+        assert total["answer"] == "16.0"
+        assert distinct["answer"] == "GWT, memory"
+        assert minimum["answer"] == "Idea-002"
+        assert maximum["answer"] == "Idea-001"
 
     def test_gwt_collection_query_restores_runtime_index_from_persisted_items(self):
         cycle = Mock()

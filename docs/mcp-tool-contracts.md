@@ -32,6 +32,8 @@ removed without updating tests and changelog.
 - `gwt_collection_query(operation, field?, value?, metric?, k=5, group_field?, group_a?, group_b?)`
   - Success keys: `operation`, `answer`, `matched_count`, `matched_records`,
     `supporting_evidence`, `metadata`
+  - Supported operations: `count`, `filter`, `top_k`, `average`, `sum`,
+    `distinct`, `min`, `max`, `compare`
   - Error keys: `error`, optional `supported_operations`
 - `gwt_trace_explain()`
   - Success keys: `status`, `question`, `planner`, `strategy`, `answer`,

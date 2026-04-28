@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), real stdio MCP smoke (`python -m gwt_context.mcp_client_smoke`), and `pytest` baseline of 198 passing tests.
+- Baseline runtime and tests: Python 3.11+, MCP server (`python -m gwt_context`), local smoke (`python -m gwt_context.smoke`), real stdio MCP smoke (`python -m gwt_context.mcp_client_smoke`), and `pytest` baseline of 201 passing tests.
 - Architecture baseline is established in `ARCHITECTURE.md`; active work is P5/P6 boundary migration.
 - Benchmark entrypoints are present and runnable:
   - `python -m tests.benchmarks.ruler_multi_hop`
@@ -109,6 +109,9 @@
     `graph`, and `hybrid`.
   - Agent-facing exact-resolution tools cover direct resolve, collection query,
     and trace explanation.
+  - Runtime collection parsing accepts key-value records, JSONL records, and
+    Markdown tables, with exact count/filter/top-k/average/sum/distinct/min/max
+    operations.
   - Local readiness smoke covers server creation, store, graph resolve, attend,
     trace explanation, and stats without external embedding downloads.
   - Attention traces include post-broadcast subscriber proposals and accepted
