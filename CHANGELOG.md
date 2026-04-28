@@ -2,6 +2,11 @@
 
 ## 2026-04-28
 
+- Bumped package metadata to `0.2.1`, added release note files for `v0.2.0`
+  and `v0.2.1`, documented demo scenarios, added deterministic real MCP usage
+  and external subscriber proof-of-concept examples, and improved benchmark
+  trace HTML with phase timelines, bus action counts, policy skip counts, and
+  subscriber status badges.
 - Added the `v0.2.0` release threshold matrix, local quickstart, external
   subscriber adapter documentation, and `ExternalReasoningSubscriber` for
   port-safe LLM/NLI proposal generators.

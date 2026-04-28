@@ -39,6 +39,8 @@ def test_render_report_includes_task_trace_and_workspace() -> None:
                                 ],
                             },
                         },
+                        {"phase": "broadcast_bus_tool", "kind": "resolve_answer"},
+                        {"phase": "subscriber_policy_skip", "kind": "query_memory"},
                     ],
                     "workspace_snapshot": {"workspace": {"items": []}},
                 }
@@ -51,3 +53,7 @@ def test_render_report_includes_task_trace_and_workspace() -> None:
     assert "controller" in html
     assert "Broadcast Bus" in html
     assert "structured_resolver" in html
+    assert "Trace phases:" in html
+    assert "controller x1" in html
+    assert "actions=1" in html
+    assert "policy_skips=1" in html

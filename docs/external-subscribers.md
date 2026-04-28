@@ -39,6 +39,12 @@ The adapter sanitizes proposals:
 - filters below-threshold priorities,
 - relies on `BroadcastBus` timeout/error reports for execution health.
 
+Run the deterministic proof-of-concept:
+
+```bash
+python examples/external_subscriber_poc.py
+```
+
 ## Allowed Proposal Kinds
 
 - `query_memory`

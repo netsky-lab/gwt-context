@@ -39,6 +39,12 @@ def render_report(report: dict[str, Any]) -> str:
             "table{border-collapse:collapse;width:100%;margin:8px 0}",
             "td,th{border:1px solid #ddd;padding:6px;text-align:left}",
             ".ok{color:#177245}.bad{color:#b42318}.meta{color:#555}",
+            ".badge{display:inline-block;border:1px solid #ccc;border-radius:999px;"
+            "padding:2px 8px;margin:2px;font-size:12px;background:#fff}",
+            ".badge-ok{border-color:#9ad3aa;background:#edf8f0;color:#17633a}",
+            ".badge-warn{border-color:#f6c56f;background:#fff7e6;color:#8a5200}",
+            ".badge-bad{border-color:#f0a0a0;background:#fff0f0;color:#9d1c1c}",
+            ".timeline{margin:10px 0}",
             "</style>",
             "</head>",
             "<body>",
@@ -81,8 +87,11 @@ def _render_summary(report: dict[str, Any]) -> str:
 def _render_result(result: dict[str, Any]) -> str:
     status_class = "ok" if result.get("correct") else "bad"
     status = "OK" if result.get("correct") else "WRONG"
-    trace_html = "\n".join(_render_trace_entry(entry) for entry in result.get("trace", []))
+    trace = result.get("trace", [])
+    trace_html = "\n".join(_render_trace_entry(entry) for entry in trace)
+    timeline_html = _render_timeline(trace)
     bus_html = _render_bus_summary(result)
+    trace_summary = _render_trace_summary(trace)
     workspace = json.dumps(result.get("workspace_snapshot", {}), indent=2)
     return "\n".join(
         [
@@ -99,6 +108,8 @@ def _render_result(result: dict[str, Any]) -> str:
             "<h3>Raw answer</h3>",
             f"<pre>{html.escape(str(result.get('raw_answer', '')))}</pre>",
             "<h3>Trace</h3>",
+            trace_summary,
+            timeline_html,
             bus_html,
             trace_html,
             "<h3>Workspace snapshot</h3>",
@@ -109,7 +120,7 @@ def _render_result(result: dict[str, Any]) -> str:
 
 
 def _render_bus_summary(result: dict[str, Any]) -> str:
-    proposals = accepted = inhibited = actions = 0
+    proposals = accepted = inhibited = actions = policy_skips = 0
     reports: list[dict[str, Any]] = []
     for entry in result.get("trace", []):
         if not isinstance(entry, dict):
@@ -126,12 +137,14 @@ def _render_bus_summary(result: dict[str, Any]) -> str:
                 )
         if entry.get("phase") == "broadcast_bus_tool":
             actions += 1
-    if proposals == accepted == inhibited == actions == 0 and not reports:
+        if entry.get("phase") == "subscriber_policy_skip":
+            policy_skips += 1
+    if proposals == accepted == inhibited == actions == policy_skips == 0 and not reports:
         return ""
     rows = "".join(
         "<tr>"
         f"<td>{html.escape(str(report.get('subscriber', '')))}</td>"
-        f"<td>{html.escape(str(report.get('status', '')))}</td>"
+        f"<td>{_status_badge(str(report.get('status', '')))}</td>"
         f"<td>{html.escape(str(report.get('proposal_count', '')))}</td>"
         f"<td>{html.escape(str(report.get('elapsed_ms', '')))}</td>"
         "</tr>"
@@ -142,7 +155,7 @@ def _render_bus_summary(result: dict[str, Any]) -> str:
             "<h3>Broadcast Bus</h3>",
             (
                 f"<p class=\"meta\">proposals={proposals} accepted={accepted} "
-                f"inhibited={inhibited} actions={actions}</p>"
+                f"inhibited={inhibited} actions={actions} policy_skips={policy_skips}</p>"
             ),
             "<table><thead><tr><th>Subscriber</th><th>Status</th><th>Proposals</th>"
             "<th>ms</th></tr></thead><tbody>",
@@ -150,6 +163,44 @@ def _render_bus_summary(result: dict[str, Any]) -> str:
             "</tbody></table>",
         ]
     )
+
+
+def _render_trace_summary(trace: Any) -> str:
+    if not isinstance(trace, list):
+        return ""
+    phases: dict[str, int] = {}
+    for entry in trace:
+        if not isinstance(entry, dict):
+            continue
+        phase = str(entry.get("phase", ""))
+        if not phase:
+            continue
+        phases[phase] = phases.get(phase, 0) + 1
+    if not phases:
+        return ""
+    badges = "".join(
+        f"<span class=\"badge\">{html.escape(phase)} x{count}</span>"
+        for phase, count in sorted(phases.items())
+    )
+    return f"<p class=\"meta\">Trace phases: {badges}</p>"
+
+
+def _render_timeline(trace: Any) -> str:
+    if not isinstance(trace, list):
+        return ""
+    badges = []
+    for entry in trace:
+        if not isinstance(entry, dict):
+            continue
+        phase = str(entry.get("phase", ""))
+        if not phase:
+            continue
+        badges.append(
+            f"<span class=\"badge {_phase_badge_class(phase)}\">{html.escape(phase)}</span>"
+        )
+    if not badges:
+        return ""
+    return f"<div class=\"timeline\">{''.join(badges)}</div>"
 
 
 def _render_trace_entry(entry: dict[str, Any]) -> str:
@@ -163,6 +214,21 @@ def _render_trace_entry(entry: dict[str, Any]) -> str:
         f"<details><summary>{html.escape(str(phase))}</summary>"
         f"<pre>{html.escape(json.dumps(compact, indent=2))}</pre></details>"
     )
+
+
+def _status_badge(status: str) -> str:
+    css_class = "badge-ok" if status == "ok" else "badge-bad"
+    return f"<span class=\"badge {css_class}\">{html.escape(status)}</span>"
+
+
+def _phase_badge_class(phase: str) -> str:
+    if phase in {"broadcast_bus", "broadcast_bus_tool"}:
+        return "badge-ok"
+    if phase == "subscriber_policy_skip":
+        return "badge-warn"
+    if "error" in phase:
+        return "badge-bad"
+    return ""
 
 
 def main() -> None:

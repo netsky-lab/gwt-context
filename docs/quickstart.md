@@ -35,6 +35,18 @@ GWT_EMBEDDING_PROVIDER=hash GWT_EMBEDDING_MODEL=hash python -m gwt_context.smoke
 Expected output is a compact JSON report with `trace_status: "ok"` and a
 resolved graph answer.
 
+## Local Usage Loop
+
+```bash
+python examples/real_usage_loop.py
+```
+
+This in-process MCP workflow stores graph and structured records, calls
+`gwt_attend`, inspects `gwt_bus_inspect`, reads `gwt_trace_explain`, and prints
+a compact JSON summary.
+
+For a broader demo checklist, see [`docs/demo-scenarios.md`](demo-scenarios.md).
+
 ## Core Tool Flow
 
 Use `gwt_store` to persist facts:
@@ -79,6 +91,21 @@ with `gwt_bus_inspect`.
   proposals, and subscriber execution reports.
 - `broadcast_bus_tool` trace steps show applied side effects or policy skips.
 - `gwt_inspect("broadcast_bus")` exposes the latest cycle-level bus read model.
+- HTML trace rendering includes a phase timeline, bus action counts, policy
+  skips, and subscriber status badges:
+
+```bash
+python -m tests.benchmarks.render_trace tests/benchmarks/results/<result>.json
+```
+
+## External Subscriber PoC
+
+```bash
+python examples/external_subscriber_poc.py
+```
+
+This runs `ExternalReasoningSubscriber` with a local fake agent loop so adapter
+sanitization and bus arbitration can be inspected without any provider SDK.
 
 ## Benchmark Bus On/Off
 

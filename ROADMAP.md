@@ -26,6 +26,10 @@
   conscious, bus, and admission contracts.
 - `ExternalReasoningSubscriber` defines the port-safe adapter path for future
   LLM/NLI subscriber loops without coupling application code to provider SDKs.
+- Reproducible local examples now cover real in-process MCP usage and an
+  external subscriber proof-of-concept without external provider calls.
+- Benchmark trace HTML reports include a phase timeline, bus action counts,
+  policy skip counts, and subscriber status badges for faster runtime review.
 - Task onboarding constraint is required in both `AGENTS.md` and task planning:
   - read `ARCHITECTURE.md` first,
   - record in/out boundaries, forbidden imports, and forbidden coupling checks,
@@ -99,6 +103,8 @@
   - Structured collection tasks have explicit release gates in benchmark
     reports for count, filter, aggregate, synthesis, and top-k task families.
   - `docs/release-thresholds.md` records the blocking gates for release tags.
+  - `docs/demo-scenarios.md` and `docs/releases/` document runnable release
+    scenarios and published release notes.
 
 ## Medium-term
 

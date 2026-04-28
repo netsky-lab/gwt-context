@@ -18,6 +18,7 @@ LLMs lose information in long contexts — multi-hop reasoning degrades (Sequent
 | Capacity limitation | Workspace capacity = 7 (Miller's 7±2) |
 | Persistence with controlled update | Items persist until displaced by competition |
 | Goal-modulated arbitration | ×1.3 multiplicative boost by goal relevance |
+| Post-broadcast processors | BroadcastBus fan-out with accepted/inhibited proposals |
 
 ## Install
 
@@ -137,6 +138,7 @@ links instead of only parsing names from rendered broadcast text.
 The strict state/admission rules are documented in
 [`docs/gwt-runtime-contracts.md`](docs/gwt-runtime-contracts.md).
 Start from [`docs/quickstart.md`](docs/quickstart.md) for local usage and
+[`docs/demo-scenarios.md`](docs/demo-scenarios.md) for reproducible demos, and
 [`docs/external-subscribers.md`](docs/external-subscribers.md) for LLM/NLI
 subscriber adapters.
 
@@ -231,6 +233,19 @@ Run a small local MCP-facing scenario without downloading embedding models:
 
 ```bash
 python examples/mcp_demo.py
+```
+
+Run the post-release usage loop that exercises store, attend, bus inspection,
+trace explanation, and workspace inspection:
+
+```bash
+python examples/real_usage_loop.py
+```
+
+Run the external subscriber proof-of-concept:
+
+```bash
+python examples/external_subscriber_poc.py
 ```
 
 Run the deterministic benchmark smoke used by `npm test`:

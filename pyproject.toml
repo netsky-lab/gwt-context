@@ -1,6 +1,6 @@
 [project]
 name = "gwt-context"
-version = "0.2.0"
+version = "0.2.1"
 description = "Global Workspace Theory context management MCP server"
 requires-python = ">=3.11"
 license = "MIT"
