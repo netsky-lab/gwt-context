@@ -13,6 +13,16 @@ recommended layout is:
 Register the project-specific server for this repository:
 
 ```bash
+python scripts/codex_mcp_bootstrap.py
+python scripts/codex_mcp_bootstrap.py --apply
+```
+
+The bootstrap helper prints the two `codex mcp add` commands by default and
+only changes Codex config with `--apply`.
+
+Equivalent manual project-specific registration:
+
+```bash
 codex mcp add gwt-context \
   --env GWT_EMBEDDING_PROVIDER=hash \
   --env GWT_EMBEDDING_MODEL=hash \
@@ -44,6 +54,8 @@ Run the same server path through a real stdio MCP smoke:
 
 ```bash
 python -m gwt_context.mcp_client_smoke
+python scripts/codex_mcp_health.py
+python scripts/codex_mcp_health.py --smoke
 ```
 
 Notes:
@@ -66,6 +78,14 @@ python scripts/clear_codex_memory.py --global --yes
 
 The cleanup helper refuses to clear the memory root directly. It only clears
 entries inside a selected namespace and recreates the namespace directory.
+
+NPM aliases:
+
+```bash
+npm run memory:bootstrap
+npm run memory:health
+npm run memory:clear -- --project gwt-context
+```
 
 Remove servers if needed:
 

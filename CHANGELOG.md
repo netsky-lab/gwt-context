@@ -12,6 +12,8 @@
 - Added integration regressions proving recurrent linked-memory activation
   reaches workspace and accepted subscriber queries affect later attention
   passes.
+- Added Codex MCP bootstrap and health scripts, npm aliases, and docs for
+  dry-run registration, namespace inspection, and temp-dir smoke checks.
 - Split Codex MCP memory into project/global namespace guidance, added
   `scripts/clear_codex_memory.py` for safe namespace cleanup, and reconfigured
   the local Codex MCP entries to use project-specific and global data dirs.
