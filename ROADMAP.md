@@ -18,7 +18,8 @@
   accepted proposal kinds and records inhibited repeats in the trace.
 - Broadcast subscribers now produce execution reports with timeout/error
   statuses, and bus admission decisions are governed by an explicit
-  `BusAdmissionPolicy`.
+  `BusAdmissionPolicy`. Bus arbitration now records decision reason codes,
+  proposal grouping, and compact summaries in traces and inspect output.
 - Workspace admission has an ignition threshold through `GWT_MIN_ACTIVATION`.
 - Conscious workspace items reactivate explicit linked memories into the
   preconscious buffer for recurrent link-following cycles.

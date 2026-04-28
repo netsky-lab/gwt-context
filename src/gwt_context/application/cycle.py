@@ -13,6 +13,8 @@ from gwt_context.application.broadcast_bus import (
     BroadcastBus,
     BroadcastBusResult,
     BroadcastContext,
+    broadcast_bus_result_groups,
+    broadcast_bus_result_summary,
     broadcast_bus_result_to_dict,
 )
 from gwt_context.domain.broadcast import BroadcastAssembler
@@ -253,6 +255,16 @@ class SelectionBroadcastCycle:
                 "last_link_activations": list(self._last_link_activations),
             }
         if normalized == "broadcast_bus":
+            bus_summary = (
+                broadcast_bus_result_summary(self._last_broadcast_bus_result)
+                if self._last_broadcast_bus_result is not None
+                else None
+            )
+            proposal_groups = (
+                broadcast_bus_result_groups(self._last_broadcast_bus_result)
+                if self._last_broadcast_bus_result is not None
+                else None
+            )
             return {
                 "target": "broadcast_bus",
                 "configured": self._broadcast_bus is not None,
@@ -261,6 +273,8 @@ class SelectionBroadcastCycle:
                     if self._last_broadcast_bus_result is not None
                     else None
                 ),
+                "summary": bus_summary,
+                "proposal_groups": proposal_groups,
                 "last_link_activations": list(self._last_link_activations),
             }
 

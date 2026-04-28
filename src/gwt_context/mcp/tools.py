@@ -772,6 +772,7 @@ def _broadcast_bus_summary(trace_steps: Sequence[dict[str, Any]]) -> dict[str, A
         "inhibited_count": inhibited_count,
         "accepted_subscribers": sorted(subscriber for subscriber in subscribers if subscriber),
         "executed_actions": executed_actions,
+        "inhibited_reasons": _trace_inhibited_reasons(trace_steps),
     }
 
 
@@ -784,6 +785,8 @@ def _bus_snapshot_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
             "accepted_count": 0,
             "inhibited_count": 0,
             "subscriber_statuses": {},
+            "inhibited_reasons": {},
+            "proposal_groups": {},
         }
     statuses: dict[str, int] = {}
     for report in last_result.get("subscriber_reports", []):
@@ -791,10 +794,32 @@ def _bus_snapshot_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
             continue
         status = str(report.get("status", "unknown"))
         statuses[status] = statuses.get(status, 0) + 1
+    summary = last_result.get("summary", {})
+    proposal_groups = last_result.get("proposal_groups", {})
     return {
         "configured": bool(snapshot.get("configured")),
         "proposal_count": len(last_result.get("proposals", [])),
         "accepted_count": len(last_result.get("accepted", [])),
         "inhibited_count": len(last_result.get("inhibited", [])),
         "subscriber_statuses": statuses,
+        "inhibited_reasons": (
+            summary.get("inhibited_reasons", {}) if isinstance(summary, dict) else {}
+        ),
+        "proposal_groups": proposal_groups if isinstance(proposal_groups, dict) else {},
     }
+
+
+def _trace_inhibited_reasons(trace_steps: Sequence[dict[str, Any]]) -> dict[str, int]:
+    reasons: dict[str, int] = {}
+    for step in trace_steps:
+        if step.get("phase") != "broadcast_bus":
+            continue
+        payload = step.get("payload", {})
+        if not isinstance(payload, dict):
+            continue
+        for decision in payload.get("decisions", []):
+            if not isinstance(decision, dict) or decision.get("status") != "inhibited":
+                continue
+            reason = str(decision.get("reason", "unknown"))
+            reasons[reason] = reasons.get(reason, 0) + 1
+    return dict(sorted(reasons.items()))

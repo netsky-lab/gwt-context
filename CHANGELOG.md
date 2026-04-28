@@ -5,6 +5,8 @@
 - Added MCP memory management tools for namespace profiling, runtime reset,
   JSONL export/import, namespace tagging on stored records, and structured
   read-model restoration from persisted memory after MCP startup.
+- Added broadcast-bus arbitration decision reason codes, serialized bus
+  summaries, proposal grouping, and richer `broadcast_bus` inspect output.
 - Split Codex MCP memory into project/global namespace guidance, added
   `scripts/clear_codex_memory.py` for safe namespace cleanup, and reconfigured
   the local Codex MCP entries to use project-specific and global data dirs.

@@ -40,7 +40,8 @@ removed without updating tests and changelog.
 - `gwt_bus_inspect()`
   - Success keys: `status`, `broadcast_bus`, `summary`
   - `summary` includes proposal, accepted, inhibited, and subscriber status
-    counts from the latest cycle-level bus read model.
+    counts from the latest cycle-level bus read model, plus inhibited reason
+    counts and proposal grouping data when a bus result exists.
 - `gwt_memory_profile()`
   - Success keys: `status`, `namespace`, `data_dir`, `embedding`,
     `persisted_item_count`, `runtime_index_count`, `structured_record_count`,
@@ -72,7 +73,26 @@ removed without updating tests and changelog.
 - `gwt_inspect(target="workspace")`
   - Delegates to `CyclePort.inspect`; payload is target-specific read model.
   - `target="broadcast_bus"` returns whether the cycle bus is configured, the
-    latest bus result, and linked-memory reactivations from the latest cycle.
+    latest bus result, summary, proposal groups, and linked-memory reactivations
+    from the latest cycle.
+
+## Broadcast Bus Result Shape
+
+Serialized bus results include `proposals`, `accepted`, `inhibited`,
+`decisions`, `summary`, `proposal_groups`, and `subscriber_reports`.
+
+`decisions` records one arbitration outcome per accepted or inhibited proposal:
+
+```json
+{
+  "status": "accepted",
+  "reason": "accepted",
+  "proposal": {}
+}
+```
+
+Current inhibition reason codes are `below_threshold`, `duplicate_key`,
+`max_accepted`, and `resolved_answer_present`.
 
 ## Evidence Plan Shape
 

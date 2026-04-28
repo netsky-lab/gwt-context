@@ -80,8 +80,12 @@ def test_broadcast_bus_arbitrates_by_priority_and_threshold() -> None:
     assert len(result.proposals) == 2
     assert len(result.accepted) == 1
     assert result.accepted[0].subscriber == "relation_continuation"
+    assert [decision.reason for decision in result.decisions] == ["accepted", "max_accepted"]
     payload = broadcast_bus_result_to_dict(result)
     assert payload["accepted"][0]["payload"]["query"] == "Paper Beta cites"
+    assert payload["summary"]["accepted_count"] == 1
+    assert payload["summary"]["inhibited_reasons"] == {"max_accepted": 1}
+    assert payload["proposal_groups"]["proposals_by_kind"] == {"query_memory": 2}
 
 
 def test_broadcast_bus_inhibits_repeated_accepted_proposals() -> None:
@@ -93,6 +97,7 @@ def test_broadcast_bus_inhibits_repeated_accepted_proposals() -> None:
     assert first.accepted[0].payload["query"] == "Paper Beta cites"
     assert second.accepted == ()
     assert second.inhibited[0].payload["query"] == "Paper Beta cites"
+    assert second.decisions[0].reason == "below_threshold"
 
 
 def test_broadcast_bus_inhibits_queries_after_exact_resolution() -> None:
@@ -102,6 +107,7 @@ def test_broadcast_bus_inhibits_queries_after_exact_resolution() -> None:
 
     assert [proposal.kind for proposal in result.accepted] == ["resolve_answer"]
     assert any(proposal.kind == "query_memory" for proposal in result.inhibited)
+    assert any(decision.reason == "resolved_answer_present" for decision in result.decisions)
 
 
 def test_contradiction_checker_requires_configured_markers() -> None:

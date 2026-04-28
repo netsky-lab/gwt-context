@@ -52,6 +52,15 @@ class SubscriberReport:
     error: str = ""
 
 
+@dataclass(frozen=True)
+class ArbitrationDecision:
+    """Arbitration outcome for one proposal."""
+
+    proposal: BroadcastProposal
+    status: str
+    reason: str
+
+
 class BroadcastSubscriber(Protocol):
     """Processor that independently reacts to a globally broadcast workspace."""
 
@@ -79,6 +88,7 @@ class BroadcastBusResult:
     accepted: tuple[BroadcastProposal, ...]
     inhibited: tuple[BroadcastProposal, ...] = ()
     subscriber_reports: tuple[SubscriberReport, ...] = ()
+    decisions: tuple[ArbitrationDecision, ...] = ()
 
 
 class BroadcastBus:
@@ -108,7 +118,7 @@ class BroadcastBus:
     def publish(self, context: BroadcastContext) -> BroadcastBusResult:
         """Publish one broadcast event and return arbitrated proposals."""
         proposals, reports = self._collect_proposals(context)
-        accepted, inhibited = self._arbitrate(proposals)
+        accepted, inhibited, decisions = self._arbitrate(proposals)
         for proposal in accepted:
             key = _proposal_key(proposal)
             self._accepted_counts[key] = self._accepted_counts.get(key, 0) + 1
@@ -118,6 +128,7 @@ class BroadcastBus:
             accepted=tuple(accepted),
             inhibited=tuple(inhibited),
             subscriber_reports=tuple(reports),
+            decisions=tuple(decisions),
         )
 
     def _collect_proposals(
@@ -170,31 +181,37 @@ class BroadcastBus:
     def _arbitrate(
         self,
         proposals: Sequence[BroadcastProposal],
-    ) -> tuple[list[BroadcastProposal], list[BroadcastProposal]]:
+    ) -> tuple[list[BroadcastProposal], list[BroadcastProposal], list[ArbitrationDecision]]:
         accepted: list[BroadcastProposal] = []
         inhibited: list[BroadcastProposal] = []
+        decisions: list[ArbitrationDecision] = []
         seen_keys: set[tuple[str, str]] = set()
         adjusted = [self._apply_repetition_inhibition(proposal) for proposal in proposals]
         for proposal in sorted(adjusted, key=lambda item: item.priority, reverse=True):
             key = _proposal_key(proposal)
             if proposal.kind == "query_memory" and _has_resolved_answer(accepted):
                 inhibited.append(proposal)
+                decisions.append(_decision(proposal, "inhibited", "resolved_answer_present"))
                 continue
             if proposal.priority < self._threshold:
                 inhibited.append(proposal)
+                decisions.append(_decision(proposal, "inhibited", "below_threshold"))
                 continue
             if key in seen_keys:
                 inhibited.append(proposal)
+                decisions.append(_decision(proposal, "inhibited", "duplicate_key"))
                 continue
             accepted.append(proposal)
             seen_keys.add(key)
+            decisions.append(_decision(proposal, "accepted", "accepted"))
             if len(accepted) >= self._max_accepted:
-                inhibited.extend(adjusted_proposal for adjusted_proposal in adjusted if (
-                    adjusted_proposal not in accepted
-                    and adjusted_proposal not in inhibited
-                ))
+                for adjusted_proposal in adjusted:
+                    if adjusted_proposal in accepted or adjusted_proposal in inhibited:
+                        continue
+                    inhibited.append(adjusted_proposal)
+                    decisions.append(_decision(adjusted_proposal, "inhibited", "max_accepted"))
                 break
-        return accepted, inhibited
+        return accepted, inhibited, decisions
 
     def _apply_repetition_inhibition(self, proposal: BroadcastProposal) -> BroadcastProposal:
         count = self._accepted_counts.get(_proposal_key(proposal), 0)
@@ -389,6 +406,16 @@ def broadcast_bus_result_to_dict(result: BroadcastBusResult) -> dict[str, Any]:
         "proposals": [_proposal_to_dict(proposal) for proposal in result.proposals],
         "accepted": [_proposal_to_dict(proposal) for proposal in result.accepted],
         "inhibited": [_proposal_to_dict(proposal) for proposal in result.inhibited],
+        "decisions": [
+            {
+                "status": decision.status,
+                "reason": decision.reason,
+                "proposal": _proposal_to_dict(decision.proposal),
+            }
+            for decision in result.decisions
+        ],
+        "summary": broadcast_bus_result_summary(result),
+        "proposal_groups": broadcast_bus_result_groups(result),
         "subscriber_reports": [
             {
                 "subscriber": report.subscriber,
@@ -399,6 +426,35 @@ def broadcast_bus_result_to_dict(result: BroadcastBusResult) -> dict[str, Any]:
             }
             for report in result.subscriber_reports
         ],
+    }
+
+
+def broadcast_bus_result_summary(result: BroadcastBusResult) -> dict[str, Any]:
+    """Return compact counts for one bus result."""
+    return {
+        "proposal_count": len(result.proposals),
+        "accepted_count": len(result.accepted),
+        "inhibited_count": len(result.inhibited),
+        "subscriber_count": len(result.subscriber_reports),
+        "accepted_kinds": _counts(proposal.kind for proposal in result.accepted),
+        "inhibited_reasons": _counts(decision.reason for decision in result.decisions if (
+            decision.status == "inhibited"
+        )),
+        "subscriber_statuses": _counts(report.status for report in result.subscriber_reports),
+    }
+
+
+def broadcast_bus_result_groups(result: BroadcastBusResult) -> dict[str, dict[str, int]]:
+    """Group proposals by dimensions useful for traces and MCP inspect."""
+    return {
+        "proposals_by_kind": _counts(proposal.kind for proposal in result.proposals),
+        "proposals_by_subscriber": _counts(proposal.subscriber for proposal in result.proposals),
+        "accepted_by_kind": _counts(proposal.kind for proposal in result.accepted),
+        "accepted_by_subscriber": _counts(proposal.subscriber for proposal in result.accepted),
+        "inhibited_by_kind": _counts(proposal.kind for proposal in result.inhibited),
+        "inhibited_by_reason": _counts(
+            decision.reason for decision in result.decisions if decision.status == "inhibited"
+        ),
     }
 
 
@@ -422,6 +478,21 @@ def _proposal_to_dict(proposal: BroadcastProposal) -> dict[str, Any]:
         "rationale": proposal.rationale,
         "payload": dict(proposal.payload),
     }
+
+
+def _decision(
+    proposal: BroadcastProposal,
+    status: str,
+    reason: str,
+) -> ArbitrationDecision:
+    return ArbitrationDecision(proposal=proposal, status=status, reason=reason)
+
+
+def _counts(values: Iterable[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _evidence_plan_to_dict(plan: Any) -> dict[str, Any]:
