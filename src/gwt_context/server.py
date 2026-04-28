@@ -79,6 +79,11 @@ def create_server(config: GWTConfig | None = None) -> FastMCP:
                 max_accepted=config.broadcast_bus_max_accepted,
                 threshold=config.broadcast_bus_threshold,
                 subscriber_timeout_seconds=config.broadcast_bus_timeout_seconds,
+                max_proposals_per_subscriber=(
+                    config.broadcast_bus_max_proposals_per_subscriber
+                ),
+                max_payload_chars=config.broadcast_bus_max_payload_chars,
+                circuit_breaker_failures=config.broadcast_bus_circuit_breaker_failures,
             ),
         )
     attention_trace = AttentionTraceStore()

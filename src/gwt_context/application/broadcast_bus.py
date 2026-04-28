@@ -102,18 +102,39 @@ class BroadcastBus:
         threshold: float = 0.5,
         repetition_penalty: float = 0.2,
         subscriber_timeout_seconds: float = 0.25,
+        max_proposals_per_subscriber: int = 4,
+        max_payload_chars: int = 4000,
+        circuit_breaker_failures: int = 3,
     ) -> None:
         self._subscribers = tuple(subscribers)
         self._max_accepted = max_accepted
         self._threshold = threshold
         self._repetition_penalty = repetition_penalty
         self._subscriber_timeout_seconds = subscriber_timeout_seconds
+        self._max_proposals_per_subscriber = max_proposals_per_subscriber
+        self._max_payload_chars = max_payload_chars
+        self._circuit_breaker_failures = circuit_breaker_failures
         self._accepted_counts: dict[tuple[str, str], int] = {}
+        self._failure_counts: dict[str, int] = {}
 
     @property
     def subscribers(self) -> tuple[BroadcastSubscriber, ...]:
         """Configured subscribers in call order."""
         return self._subscribers
+
+    @property
+    def settings(self) -> dict[str, Any]:
+        """Runtime bus budgets and arbitration settings."""
+        return {
+            "max_accepted": self._max_accepted,
+            "threshold": self._threshold,
+            "repetition_penalty": self._repetition_penalty,
+            "subscriber_timeout_seconds": self._subscriber_timeout_seconds,
+            "max_proposals_per_subscriber": self._max_proposals_per_subscriber,
+            "max_payload_chars": self._max_payload_chars,
+            "circuit_breaker_failures": self._circuit_breaker_failures,
+            "failure_counts": dict(sorted(self._failure_counts.items())),
+        }
 
     def publish(self, context: BroadcastContext) -> BroadcastBusResult:
         """Publish one broadcast event and return arbitrated proposals."""
@@ -138,6 +159,15 @@ class BroadcastBus:
         proposals: list[BroadcastProposal] = []
         reports: list[SubscriberReport] = []
         for subscriber in self._subscribers:
+            if self._circuit_open(subscriber.name):
+                reports.append(
+                    SubscriberReport(
+                        subscriber=subscriber.name,
+                        status="circuit_open",
+                        error="subscriber disabled after repeated failures",
+                    )
+                )
+                continue
             started = time.perf_counter()
             executor = ThreadPoolExecutor(
                 max_workers=1,
@@ -148,6 +178,7 @@ class BroadcastBus:
                 subscriber_proposals = future.result(timeout=self._subscriber_timeout_seconds)
             except TimeoutError:
                 future.cancel()
+                self._record_failure(subscriber.name)
                 reports.append(
                     SubscriberReport(
                         subscriber=subscriber.name,
@@ -156,6 +187,7 @@ class BroadcastBus:
                     )
                 )
             except Exception as exc:
+                self._record_failure(subscriber.name)
                 reports.append(
                     SubscriberReport(
                         subscriber=subscriber.name,
@@ -165,18 +197,48 @@ class BroadcastBus:
                     )
                 )
             else:
-                proposals.extend(subscriber_proposals)
+                sanitized_proposals = self._sanitize_subscriber_proposals(
+                    subscriber.name,
+                    subscriber_proposals,
+                )
+                proposals.extend(sanitized_proposals)
+                self._failure_counts.pop(subscriber.name, None)
                 reports.append(
                     SubscriberReport(
                         subscriber=subscriber.name,
                         status="ok",
-                        proposal_count=len(subscriber_proposals),
+                        proposal_count=len(sanitized_proposals),
                         elapsed_ms=_elapsed_ms(started),
                     )
                 )
             finally:
                 executor.shutdown(wait=False, cancel_futures=True)
         return proposals, reports
+
+    def _sanitize_subscriber_proposals(
+        self,
+        subscriber_name: str,
+        proposals: Sequence[BroadcastProposal],
+    ) -> tuple[BroadcastProposal, ...]:
+        sanitized: list[BroadcastProposal] = []
+        for proposal in proposals[:self._max_proposals_per_subscriber]:
+            if len(json_payload := str(dict(proposal.payload))) > self._max_payload_chars:
+                payload: Mapping[str, Any] = {
+                    "truncated": True,
+                    "original_payload_chars": len(json_payload),
+                }
+            else:
+                payload = proposal.payload
+            sanitized.append(replace(proposal, subscriber=subscriber_name, payload=payload))
+        return tuple(sanitized)
+
+    def _record_failure(self, subscriber_name: str) -> None:
+        self._failure_counts[subscriber_name] = self._failure_counts.get(subscriber_name, 0) + 1
+
+    def _circuit_open(self, subscriber_name: str) -> bool:
+        if self._circuit_breaker_failures <= 0:
+            return False
+        return self._failure_counts.get(subscriber_name, 0) >= self._circuit_breaker_failures
 
     def _arbitrate(
         self,
@@ -392,6 +454,9 @@ def create_default_broadcast_bus(
     max_accepted: int = 4,
     threshold: float = 0.5,
     subscriber_timeout_seconds: float = 0.25,
+    max_proposals_per_subscriber: int = 4,
+    max_payload_chars: int = 4000,
+    circuit_breaker_failures: int = 3,
 ) -> BroadcastBus:
     """Create the standard post-broadcast subscriber bus."""
     return BroadcastBus(
@@ -406,6 +471,9 @@ def create_default_broadcast_bus(
         max_accepted=max_accepted,
         threshold=threshold,
         subscriber_timeout_seconds=subscriber_timeout_seconds,
+        max_proposals_per_subscriber=max_proposals_per_subscriber,
+        max_payload_chars=max_payload_chars,
+        circuit_breaker_failures=circuit_breaker_failures,
     )
 
 

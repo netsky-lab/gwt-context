@@ -254,6 +254,8 @@ class TestFullCycle:
         bus_snapshot = cycle.inspect("broadcast_bus")
 
         assert bus_snapshot["configured"] is True
+        assert bus_snapshot["subscribers"] == ["static"]
+        assert bus_snapshot["settings"]["max_accepted"] == 4
         assert bus_snapshot["last_result"]["accepted"][0]["subscriber"] == "static"
         assert bus_snapshot["summary"]["accepted_count"] == 1
         assert bus_snapshot["proposal_groups"]["accepted_by_subscriber"] == {"static": 1}

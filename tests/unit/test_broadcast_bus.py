@@ -136,6 +136,50 @@ def test_broadcast_bus_records_subscriber_timeout() -> None:
     assert result.subscriber_reports[0].status == "timeout"
 
 
+def test_broadcast_bus_opens_circuit_after_repeated_failures() -> None:
+    class FailingSubscriber:
+        name = "failing"
+
+        def propose(self, _context: BroadcastContext) -> tuple[BroadcastProposal, ...]:
+            raise RuntimeError("boom")
+
+    bus = BroadcastBus([FailingSubscriber()], circuit_breaker_failures=1)
+
+    first = bus.publish(_context())
+    second = bus.publish(_context())
+
+    assert first.subscriber_reports[0].status == "error"
+    assert second.subscriber_reports[0].status == "circuit_open"
+    assert bus.settings["failure_counts"] == {"failing": 1}
+
+
+def test_broadcast_bus_limits_proposals_and_truncates_large_payloads() -> None:
+    class NoisySubscriber:
+        name = "noisy"
+
+        def propose(self, _context: BroadcastContext) -> tuple[BroadcastProposal, ...]:
+            return tuple(
+                BroadcastProposal(
+                    subscriber=self.name,
+                    kind="query_memory",
+                    priority=0.9,
+                    rationale="noise",
+                    payload={"query": "x" * 20},
+                )
+                for _ in range(3)
+            )
+
+    result = BroadcastBus(
+        [NoisySubscriber()],
+        max_proposals_per_subscriber=2,
+        max_payload_chars=10,
+    ).publish(_context())
+
+    assert len(result.proposals) == 2
+    assert result.proposals[0].payload["truncated"] is True
+    assert result.subscriber_reports[0].proposal_count == 2
+
+
 def test_contradiction_checker_flags_structured_record_conflicts() -> None:
     context = _context(
         question="Is Employee-001 consistent?",

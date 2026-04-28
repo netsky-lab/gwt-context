@@ -7,6 +7,8 @@
   deletion.
 - Added `gwt_compact_working_memory` for dry-run/confirmed working-memory
   retention with JSONL backup and semantic summary creation.
+- Added broadcast-bus proposal/payload budgets, failure-count circuit breaker,
+  and exposed configured subscribers/settings in `broadcast_bus` inspect output.
 - Added MCP memory management tools for namespace profiling, runtime reset,
   JSONL export/import, namespace tagging on stored records, and structured
   read-model restoration from persisted memory after MCP startup.

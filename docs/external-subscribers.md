@@ -80,11 +80,16 @@ Bus-level budgets are separate from provider HTTP timeout:
 GWT_BROADCAST_BUS_MAX_ACCEPTED=4
 GWT_BROADCAST_BUS_THRESHOLD=0.5
 GWT_BROADCAST_BUS_TIMEOUT_SECONDS=0.25
+GWT_BROADCAST_BUS_MAX_PROPOSALS_PER_SUBSCRIBER=4
+GWT_BROADCAST_BUS_MAX_PAYLOAD_CHARS=4000
+GWT_BROADCAST_BUS_CIRCUIT_BREAKER_FAILURES=3
 ```
 
 `GWT_BROADCAST_BUS_TIMEOUT_SECONDS` is intentionally small because the bus runs
 inside the normal broadcast path. Slow external agents should be tested with a
 larger local budget before being used in day-to-day MCP sessions.
+After repeated timeout/error reports, the circuit breaker reports
+`circuit_open` for that subscriber until the MCP process restarts.
 
 Run the deterministic proof-of-concept:
 

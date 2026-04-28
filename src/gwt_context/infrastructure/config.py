@@ -50,6 +50,9 @@ class GWTConfig:
     broadcast_bus_max_accepted: int = 4
     broadcast_bus_threshold: float = 0.5
     broadcast_bus_timeout_seconds: float = 0.25
+    broadcast_bus_max_proposals_per_subscriber: int = 4
+    broadcast_bus_max_payload_chars: int = 4000
+    broadcast_bus_circuit_breaker_failures: int = 3
 
     # Optional external post-broadcast subscriber
     external_subscriber_enabled: bool = False
@@ -102,6 +105,18 @@ class GWTConfig:
             "GWT_BROADCAST_BUS_TIMEOUT_SECONDS": (
                 "broadcast_bus_timeout_seconds",
                 float,
+            ),
+            "GWT_BROADCAST_BUS_MAX_PROPOSALS_PER_SUBSCRIBER": (
+                "broadcast_bus_max_proposals_per_subscriber",
+                int,
+            ),
+            "GWT_BROADCAST_BUS_MAX_PAYLOAD_CHARS": (
+                "broadcast_bus_max_payload_chars",
+                int,
+            ),
+            "GWT_BROADCAST_BUS_CIRCUIT_BREAKER_FAILURES": (
+                "broadcast_bus_circuit_breaker_failures",
+                int,
             ),
             "GWT_EXTERNAL_SUBSCRIBER_NAME": ("external_subscriber_name", str),
             "GWT_EXTERNAL_SUBSCRIBER_API_BASE": ("external_subscriber_api_base", str),

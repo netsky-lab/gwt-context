@@ -23,6 +23,9 @@ def test_gwt_config_loads_documented_environment_overrides(monkeypatch, tmp_path
     monkeypatch.setenv("GWT_BROADCAST_BUS_MAX_ACCEPTED", "6")
     monkeypatch.setenv("GWT_BROADCAST_BUS_THRESHOLD", "0.6")
     monkeypatch.setenv("GWT_BROADCAST_BUS_TIMEOUT_SECONDS", "0.75")
+    monkeypatch.setenv("GWT_BROADCAST_BUS_MAX_PROPOSALS_PER_SUBSCRIBER", "3")
+    monkeypatch.setenv("GWT_BROADCAST_BUS_MAX_PAYLOAD_CHARS", "1000")
+    monkeypatch.setenv("GWT_BROADCAST_BUS_CIRCUIT_BREAKER_FAILURES", "2")
     monkeypatch.setenv("GWT_EXTERNAL_SUBSCRIBER_ENABLED", "true")
     monkeypatch.setenv("GWT_EXTERNAL_SUBSCRIBER_NAME", "qwen_reasoner")
     monkeypatch.setenv("GWT_EXTERNAL_SUBSCRIBER_API_BASE", "https://example.invalid/v1")
@@ -48,6 +51,9 @@ def test_gwt_config_loads_documented_environment_overrides(monkeypatch, tmp_path
     assert config.broadcast_bus_max_accepted == 6
     assert config.broadcast_bus_threshold == 0.6
     assert config.broadcast_bus_timeout_seconds == 0.75
+    assert config.broadcast_bus_max_proposals_per_subscriber == 3
+    assert config.broadcast_bus_max_payload_chars == 1000
+    assert config.broadcast_bus_circuit_breaker_failures == 2
     assert config.external_subscriber_enabled is True
     assert config.external_subscriber_name == "qwen_reasoner"
     assert config.external_subscriber_api_base == "https://example.invalid/v1"

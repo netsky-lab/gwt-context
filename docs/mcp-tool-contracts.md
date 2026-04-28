@@ -90,8 +90,9 @@ removed without updating tests and changelog.
 - `gwt_inspect(target="workspace")`
   - Delegates to `CyclePort.inspect`; payload is target-specific read model.
   - `target="broadcast_bus"` returns whether the cycle bus is configured, the
-    latest bus result, summary, proposal groups, and linked-memory reactivations
-    from the latest cycle.
+    configured subscriber names, bus settings/budgets, latest bus result,
+    summary, proposal groups, and linked-memory reactivations from the latest
+    cycle.
 
 ## Broadcast Bus Result Shape
 

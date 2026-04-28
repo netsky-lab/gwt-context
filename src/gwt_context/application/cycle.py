@@ -268,6 +268,16 @@ class SelectionBroadcastCycle:
             return {
                 "target": "broadcast_bus",
                 "configured": self._broadcast_bus is not None,
+                "subscribers": (
+                    [subscriber.name for subscriber in self._broadcast_bus.subscribers]
+                    if self._broadcast_bus is not None
+                    else []
+                ),
+                "settings": (
+                    self._broadcast_bus.settings
+                    if self._broadcast_bus is not None
+                    else {}
+                ),
                 "last_result": (
                     broadcast_bus_result_to_dict(self._last_broadcast_bus_result)
                     if self._last_broadcast_bus_result is not None
