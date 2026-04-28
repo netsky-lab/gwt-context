@@ -20,6 +20,16 @@ def test_gwt_config_loads_documented_environment_overrides(monkeypatch, tmp_path
     monkeypatch.setenv("GWT_VECTOR_INDEX_PATH", str(vector_path))
     monkeypatch.setenv("GWT_MAX_BROADCAST_TOKENS", "500")
     monkeypatch.setenv("GWT_MAX_VECTOR_ELEMENTS", "1234")
+    monkeypatch.setenv("GWT_BROADCAST_BUS_MAX_ACCEPTED", "6")
+    monkeypatch.setenv("GWT_BROADCAST_BUS_THRESHOLD", "0.6")
+    monkeypatch.setenv("GWT_BROADCAST_BUS_TIMEOUT_SECONDS", "0.75")
+    monkeypatch.setenv("GWT_EXTERNAL_SUBSCRIBER_ENABLED", "true")
+    monkeypatch.setenv("GWT_EXTERNAL_SUBSCRIBER_NAME", "qwen_reasoner")
+    monkeypatch.setenv("GWT_EXTERNAL_SUBSCRIBER_API_BASE", "https://example.invalid/v1")
+    monkeypatch.setenv("GWT_EXTERNAL_SUBSCRIBER_MODEL", "qwen")
+    monkeypatch.setenv("GWT_EXTERNAL_SUBSCRIBER_API_KEY", "placeholder")
+    monkeypatch.setenv("GWT_EXTERNAL_SUBSCRIBER_TIMEOUT_SECONDS", "3.5")
+    monkeypatch.setenv("GWT_EXTERNAL_SUBSCRIBER_MIN_PRIORITY", "0.7")
 
     config = GWTConfig.from_env()
 
@@ -35,6 +45,16 @@ def test_gwt_config_loads_documented_environment_overrides(monkeypatch, tmp_path
     assert config.vector_index_path == vector_path
     assert config.max_broadcast_tokens == 500
     assert config.max_vector_elements == 1234
+    assert config.broadcast_bus_max_accepted == 6
+    assert config.broadcast_bus_threshold == 0.6
+    assert config.broadcast_bus_timeout_seconds == 0.75
+    assert config.external_subscriber_enabled is True
+    assert config.external_subscriber_name == "qwen_reasoner"
+    assert config.external_subscriber_api_base == "https://example.invalid/v1"
+    assert config.external_subscriber_model == "qwen"
+    assert config.external_subscriber_api_key == "placeholder"
+    assert config.external_subscriber_timeout_seconds == 3.5
+    assert config.external_subscriber_min_priority == 0.7
 
 
 def test_gwt_config_uses_data_dir_when_paths_are_not_overridden(tmp_path) -> None:

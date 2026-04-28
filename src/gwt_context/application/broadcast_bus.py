@@ -386,7 +386,13 @@ class PlanCriticSubscriber:
         )
 
 
-def create_default_broadcast_bus() -> BroadcastBus:
+def create_default_broadcast_bus(
+    *,
+    extra_subscribers: Sequence[BroadcastSubscriber] = (),
+    max_accepted: int = 4,
+    threshold: float = 0.5,
+    subscriber_timeout_seconds: float = 0.25,
+) -> BroadcastBus:
     """Create the standard post-broadcast subscriber bus."""
     return BroadcastBus(
         subscribers=[
@@ -395,7 +401,11 @@ def create_default_broadcast_bus() -> BroadcastBus:
             RelationContinuationSubscriber(),
             ContradictionCheckerSubscriber(),
             PlanCriticSubscriber(),
-        ]
+            *extra_subscribers,
+        ],
+        max_accepted=max_accepted,
+        threshold=threshold,
+        subscriber_timeout_seconds=subscriber_timeout_seconds,
     )
 
 

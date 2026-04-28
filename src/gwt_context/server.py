@@ -8,7 +8,7 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from gwt_context.application.attention import AttentionTraceStore
-from gwt_context.application.broadcast_bus import create_default_broadcast_bus
+from gwt_context.application.broadcast_bus import BroadcastSubscriber, create_default_broadcast_bus
 from gwt_context.application.cycle import PreconsciousBuffer, SelectionBroadcastCycle
 from gwt_context.application.goal_manager import GoalManager
 from gwt_context.application.ingestion import IngestionPipeline
@@ -18,6 +18,10 @@ from gwt_context.domain.specialists import create_default_specialists
 from gwt_context.domain.workspace import GlobalWorkspace
 from gwt_context.infrastructure.config import GWTConfig
 from gwt_context.infrastructure.embeddings import HashEmbeddingEmbedder, SentenceTransformerEmbedder
+from gwt_context.infrastructure.external_subscribers import (
+    OpenAICompatibleSubscriberConfig,
+    build_openai_compatible_subscriber,
+)
 from gwt_context.infrastructure.storage import SQLiteMemoryStore
 from gwt_context.infrastructure.vector_index import VectorIndex
 from gwt_context.interfaces.ports import EmbeddingPort
@@ -67,11 +71,16 @@ def create_server(config: GWTConfig | None = None) -> FastMCP:
         competition=competition,
         broadcast=broadcast,
         buffer=buffer,
-        store=store,
-        vector_index=vector_index,
-        goal_manager=goal_manager,
-        broadcast_bus=create_default_broadcast_bus(),
-    )
+            store=store,
+            vector_index=vector_index,
+            goal_manager=goal_manager,
+            broadcast_bus=create_default_broadcast_bus(
+                extra_subscribers=_build_external_subscribers(config),
+                max_accepted=config.broadcast_bus_max_accepted,
+                threshold=config.broadcast_bus_threshold,
+                subscriber_timeout_seconds=config.broadcast_bus_timeout_seconds,
+            ),
+        )
     attention_trace = AttentionTraceStore()
 
     # Restore workspace state from DB on startup
@@ -98,6 +107,25 @@ def _build_embedder(config: GWTConfig) -> EmbeddingPort:
     }:
         return HashEmbeddingEmbedder(dim=config.embedding_dim)
     return SentenceTransformerEmbedder(model_name=config.embedding_model)
+
+
+def _build_external_subscribers(config: GWTConfig) -> tuple[BroadcastSubscriber, ...]:
+    if not config.external_subscriber_enabled:
+        return ()
+    if not config.external_subscriber_api_base or not config.external_subscriber_model:
+        return ()
+    return (
+        build_openai_compatible_subscriber(
+            config.external_subscriber_name,
+            OpenAICompatibleSubscriberConfig(
+                api_base=config.external_subscriber_api_base,
+                model=config.external_subscriber_model,
+                api_key=config.external_subscriber_api_key,
+                timeout_seconds=config.external_subscriber_timeout_seconds,
+            ),
+            min_priority=config.external_subscriber_min_priority,
+        ),
+    )
 
 
 def _restore_state(

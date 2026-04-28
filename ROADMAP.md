@@ -27,6 +27,8 @@
   conscious, bus, and admission contracts.
 - `ExternalReasoningSubscriber` defines the port-safe adapter path for future
   LLM/NLI subscriber loops without coupling application code to provider SDKs.
+  MCP server wiring can now attach one OpenAI-compatible external subscriber
+  through opt-in runtime config and separate bus/provider budgets.
 - Reproducible local examples now cover real in-process MCP usage and an
   external subscriber proof-of-concept without external provider calls.
 - Benchmark trace HTML reports include a phase timeline, bus action counts,

@@ -46,6 +46,20 @@ class GWTConfig:
     vector_index_path_override: str | None = None
     max_vector_elements: int = 100_000
 
+    # Broadcast bus
+    broadcast_bus_max_accepted: int = 4
+    broadcast_bus_threshold: float = 0.5
+    broadcast_bus_timeout_seconds: float = 0.25
+
+    # Optional external post-broadcast subscriber
+    external_subscriber_enabled: bool = False
+    external_subscriber_name: str = "external_reasoner"
+    external_subscriber_api_base: str = ""
+    external_subscriber_model: str = ""
+    external_subscriber_api_key: str = "not-needed"
+    external_subscriber_timeout_seconds: float = 10.0
+    external_subscriber_min_priority: float = 0.5
+
     @property
     def data_path(self) -> Path:
         return Path(self.data_dir).expanduser()
@@ -83,9 +97,34 @@ class GWTConfig:
             "GWT_VECTOR_INDEX_PATH": ("vector_index_path_override", str),
             "GWT_MAX_BROADCAST_TOKENS": ("max_broadcast_tokens", int),
             "GWT_MAX_VECTOR_ELEMENTS": ("max_vector_elements", int),
+            "GWT_BROADCAST_BUS_MAX_ACCEPTED": ("broadcast_bus_max_accepted", int),
+            "GWT_BROADCAST_BUS_THRESHOLD": ("broadcast_bus_threshold", float),
+            "GWT_BROADCAST_BUS_TIMEOUT_SECONDS": (
+                "broadcast_bus_timeout_seconds",
+                float,
+            ),
+            "GWT_EXTERNAL_SUBSCRIBER_NAME": ("external_subscriber_name", str),
+            "GWT_EXTERNAL_SUBSCRIBER_API_BASE": ("external_subscriber_api_base", str),
+            "GWT_EXTERNAL_SUBSCRIBER_MODEL": ("external_subscriber_model", str),
+            "GWT_EXTERNAL_SUBSCRIBER_API_KEY": ("external_subscriber_api_key", str),
+            "GWT_EXTERNAL_SUBSCRIBER_TIMEOUT_SECONDS": (
+                "external_subscriber_timeout_seconds",
+                float,
+            ),
+            "GWT_EXTERNAL_SUBSCRIBER_MIN_PRIORITY": (
+                "external_subscriber_min_priority",
+                float,
+            ),
         }
         for env_key, (attr, type_fn) in env_map.items():
             val = os.environ.get(env_key)
             if val is not None:
                 setattr(config, attr, type_fn(val))
+        enabled = os.environ.get("GWT_EXTERNAL_SUBSCRIBER_ENABLED")
+        if enabled is not None:
+            config.external_subscriber_enabled = _parse_bool(enabled)
         return config
+
+
+def _parse_bool(value: str) -> bool:
+    return value.lower().strip() in {"1", "true", "yes", "on"}

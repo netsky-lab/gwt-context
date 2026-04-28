@@ -59,6 +59,33 @@ The adapter sanitizes proposals:
 - filters below-threshold priorities,
 - relies on `BroadcastBus` timeout/error reports for execution health.
 
+## Runtime Wiring
+
+The default MCP server can attach one OpenAI-compatible external subscriber from
+environment variables. It is disabled by default.
+
+```bash
+GWT_EXTERNAL_SUBSCRIBER_ENABLED=true
+GWT_EXTERNAL_SUBSCRIBER_NAME=external_reasoner
+GWT_EXTERNAL_SUBSCRIBER_API_BASE=https://example-openai-compatible-endpoint/v1
+GWT_EXTERNAL_SUBSCRIBER_MODEL=qwen3.6-35b-a3b
+GWT_EXTERNAL_SUBSCRIBER_API_KEY=test
+GWT_EXTERNAL_SUBSCRIBER_TIMEOUT_SECONDS=10
+GWT_EXTERNAL_SUBSCRIBER_MIN_PRIORITY=0.5
+```
+
+Bus-level budgets are separate from provider HTTP timeout:
+
+```bash
+GWT_BROADCAST_BUS_MAX_ACCEPTED=4
+GWT_BROADCAST_BUS_THRESHOLD=0.5
+GWT_BROADCAST_BUS_TIMEOUT_SECONDS=0.25
+```
+
+`GWT_BROADCAST_BUS_TIMEOUT_SECONDS` is intentionally small because the bus runs
+inside the normal broadcast path. Slow external agents should be tested with a
+larger local budget before being used in day-to-day MCP sessions.
+
 Run the deterministic proof-of-concept:
 
 ```bash

@@ -187,6 +187,13 @@ def test_server_builds_cycle_with_infrastructure_ports(monkeypatch, tmp_path) ->
     config = GWTConfig(data_dir=tmp_path / "wire")
     config.ensure_data_dir()
     config.embedding_dim = 4
+    config.broadcast_bus_max_accepted = 6
+    config.broadcast_bus_threshold = 0.6
+    config.broadcast_bus_timeout_seconds = 0.75
+    config.external_subscriber_enabled = True
+    config.external_subscriber_name = "qwen_reasoner"
+    config.external_subscriber_api_base = "https://example.invalid/v1"
+    config.external_subscriber_model = "qwen"
 
     monkeypatch.setattr("gwt_context.server.GoalManager", fake_goal_manager)
     monkeypatch.setattr("gwt_context.server.IngestionPipeline", fake_ingestion)
@@ -212,6 +219,7 @@ def test_server_builds_cycle_with_infrastructure_ports(monkeypatch, tmp_path) ->
     assert cycle["vector_index"] is ingestion["vector_index"]
     assert cycle["goal_manager"] is calls["goal_manager_instance"]
     assert cycle["broadcast_bus"] is not None
+    assert cycle["broadcast_bus"].subscribers[-1].name == "qwen_reasoner"
 
     assert isinstance(cycle["store"], SQLiteMemoryStore)
     assert isinstance(cycle["vector_index"], VectorIndex)
