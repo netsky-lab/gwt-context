@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -121,6 +122,11 @@ def _run(command: GateCommand) -> None:
 
 def _check_no_matches(name: str, command: tuple[str, ...]) -> None:
     print(f"==> boundary: {name}", flush=True)
+    if command[0] == "rg" and shutil.which("rg") is None:
+        matches = _scan_without_ripgrep(command)
+        if matches:
+            raise RuntimeError(f"{name} matched forbidden content:\n" + "\n".join(matches))
+        return
     result = subprocess.run(
         command,
         cwd=REPO_ROOT,
@@ -132,6 +138,29 @@ def _check_no_matches(name: str, command: tuple[str, ...]) -> None:
         raise RuntimeError(f"{name} matched forbidden content:\n{result.stdout}")
     if result.returncode not in {0, 1}:
         raise RuntimeError(f"{name} check failed:\n{result.stdout}")
+
+
+def _scan_without_ripgrep(command: tuple[str, ...]) -> list[str]:
+    """Return grep-like regex matches for the subset of rg used by this gate."""
+    pattern_index = 2 if len(command) > 2 and command[1] == "-n" else 1
+    pattern = re.compile(command[pattern_index])
+    roots = command[pattern_index + 1 :]
+    matches: list[str] = []
+    for root in roots:
+        root_path = REPO_ROOT / root
+        paths = root_path.rglob("*") if root_path.is_dir() else (root_path,)
+        for path in paths:
+            if not path.is_file():
+                continue
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except UnicodeDecodeError:
+                continue
+            relative_path = path.relative_to(REPO_ROOT)
+            for line_number, line in enumerate(lines, start=1):
+                if pattern.search(line):
+                    matches.append(f"{relative_path}:{line_number}:{line}")
+    return matches
 
 
 def _check_no_secret_needles() -> None:
