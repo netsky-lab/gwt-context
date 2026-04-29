@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">gwt-context</title>
+  <desc id="desc">GWT-inspired MCP memory runtime preview card.</desc>
+  <defs>
+    <pattern id="grain" width="12" height="12" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="3" r="1" fill="#171513" opacity="0.05"/>
+      <circle cx="8" cy="9" r="1" fill="#171513" opacity="0.04"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="#f4efe6"/>
+  <rect width="1200" height="630" fill="url(#grain)"/>
+  <rect x="72" y="72" width="1056" height="486" fill="#fbf7ee" stroke="#171513" stroke-opacity="0.18"/>
+  <rect x="72" y="72" width="312" height="42" fill="#171513"/>
+  <text x="94" y="99" font-family="JetBrains Mono, monospace" font-size="18" letter-spacing="2" fill="#f4efe6">GWT-CONTEXT</text>
+  <text x="96" y="218" font-family="Georgia, serif" font-size="88" fill="#171513">Working memory</text>
+  <text x="96" y="314" font-family="Georgia, serif" font-size="88" fill="#171513">for agents,</text>
+  <text x="96" y="410" font-family="Georgia, serif" font-size="88" font-style="italic" fill="#c8410b">shaped like attention.</text>
+  <text x="100" y="480" font-family="Arial, sans-serif" font-size="26" fill="#3a3530">MCP server · bounded workspace · broadcast bus · traceable memory ops</text>
+  <g transform="translate(830 178)">
+    <rect x="0" y="0" width="214" height="214" fill="#171513"/>
+    <text x="107" y="134" text-anchor="middle" font-family="Georgia, serif" font-size="132" font-style="italic" fill="#f4efe6">G</text>
+    <circle cx="28" cy="28" r="8" fill="#c8410b"/>
+    <circle cx="186" cy="28" r="8" fill="#3d5a3a"/>
+    <circle cx="28" cy="186" r="8" fill="#c69b3a"/>
+    <circle cx="186" cy="186" r="8" fill="#f4efe6"/>
+  </g>
+  <text x="834" y="456" font-family="JetBrains Mono, monospace" font-size="20" letter-spacing="2" fill="#6b6359">201 TESTS · QWEN SANITY GREEN</text>
+</svg>

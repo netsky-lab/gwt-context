@@ -117,6 +117,25 @@ class TestResourceBoundaryDelegation:
             == "Total items: 10\nWorkspace: 2/7\nBuffer: 3\nBroadcasts: 4\nActive goals: 1"
         )
 
+    def test_health_resource_reports_compact_runtime_status(self):
+        cycle = Mock()
+        cycle.inspect = Mock(
+            side_effect=[
+                {"occupied_count": 2, "capacity": 7},
+                {"total_items": 10, "buffer_size": 3, "broadcasts": 4, "active_goals": 1},
+                {"configured": True},
+            ]
+        )
+        store = Mock()
+        store.get_all_items = Mock(return_value=[Mock(), Mock()])
+
+        mcp = _register_resources(cycle, store)
+        result = _call_resource(mcp, "gwt://health")
+
+        assert '"status": "ready"' in result
+        assert '"persisted_items": 2' in result
+        assert '"broadcast_bus_configured": true' in result
+
     def test_memory_resource_reads_from_store_port(self):
         cycle = Mock()
         cycle.inspect = Mock()

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-04-29
+
+- Bumped package metadata to `0.3.0rc1` to match the `v0.3.0-rc1`
+  documentation and release-candidate flow.
+- Redesigned the GitHub Pages demo landing, added social preview metadata, and
+  added an OpenGraph preview asset.
+- Added `gwt_readiness_check` and `gwt://health` for compact MCP/runtime health
+  reporting through public ports.
+- Added `docs/benchmark-report-v0.3.md` and refreshed release-readiness tables
+  with the 2026-04-29 bounded Qwen `max-tasks=5` bus on/off sanity run.
+- Added tag-specific `v0.3.0-rc1` release notes.
+
 ## 2026-04-28
 
 - Added confirmed persistent memory reset, JSONL backup/restore tools, namespace

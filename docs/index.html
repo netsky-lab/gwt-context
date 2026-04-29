@@ -1,7 +1,3 @@
----
-layout: null
-title: gwt-context
----
 <!doctype html>
 <html lang="en">
 <head>
@@ -12,6 +8,22 @@ title: gwt-context
     name="description"
     content="A Global Workspace Theory-inspired MCP server for bounded working memory, broadcast subscribers, and traceable agent memory operations."
   >
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="gwt-context">
+  <meta
+    property="og:description"
+    content="MCP memory runtime where facts compete for workspace and broadcasts fan out to proposal processors."
+  >
+  <meta property="og:url" content="https://netsky-lab.github.io/gwt-context/">
+  <meta property="og:image" content="https://netsky-lab.github.io/gwt-context/assets/og-card.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="gwt-context">
+  <meta
+    name="twitter:description"
+    content="GWT-inspired MCP working-memory runtime with workspace competition, broadcast bus, and traceable memory ops."
+  >
+  <meta name="twitter:image" content="https://netsky-lab.github.io/gwt-context/assets/og-card.svg">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -1187,9 +1199,9 @@ title: gwt-context
 
   <div class="strip">
     <div class="wrap strip-inner">
-      <span><span class="dot"></span>v0.3.0 RC · bounded sanity green · 2026-04-28</span>
+      <span><span class="dot"></span>v0.3.0 RC · bounded sanity green · 2026-04-29</span>
       <div class="strip-meta">
-        <span>Tests <b>201 / 201</b></span>
+        <span>Tests <b>206 / 206</b></span>
         <span>RULER <b>100%</b></span>
         <span>LongBench <b>100%</b></span>
         <span>Bus <b>on / off</b></span>
@@ -1223,7 +1235,7 @@ title: gwt-context
       <aside class="schematic" aria-label="Workspace and bus diagram">
         <div class="schem-head">
           <span>last dogfood · local MCP loop</span>
-          <span>2026-04-28</span>
+          <span>2026-04-29</span>
         </div>
         <div class="ws">
           <div class="row">
@@ -1318,13 +1330,13 @@ title: gwt-context
         <div class="ev-grid">
           <div>
             <p class="prose">
-              Latest bounded sanity run was executed on <b>2026-04-28</b>
+              Latest bounded sanity run was executed on <b>2026-04-29</b>
               against the configured OpenAI-compatible Qwen endpoint, with
               bus-on and bus-off slices. Numbers below are the artifacts of the
               run that ships in this release candidate.
             </p>
             <div class="stats">
-              <div class="stat"><div class="v">201<sup>pass</sup></div><div class="l">pytest cases<br>passing</div></div>
+              <div class="stat"><div class="v">206<sup>pass</sup></div><div class="l">pytest cases<br>passing</div></div>
               <div class="stat"><div class="v">100<sup>%</sup></div><div class="l">RULER sanity<br>bus on / off</div></div>
               <div class="stat"><div class="v">100<sup>%</sup></div><div class="l">LongBench sanity<br>bus on / off</div></div>
             </div>
@@ -1343,7 +1355,7 @@ title: gwt-context
               <div class="r"><span class="k">Bus</span><span class="v">5 subs · 2/4 RULER · 2/2 LongBench</span></div>
               <div class="r"><span class="k">RULER</span><span class="v green">100% · bus on/off</span></div>
               <div class="r"><span class="k">LongBench</span><span class="v green">100% · bus on/off</span></div>
-              <div class="r"><span class="k">Issued</span><span class="v">2026-04-28 · documented in dogfood report</span></div>
+              <div class="r"><span class="k">Issued</span><span class="v">2026-04-29 · documented in dogfood report</span></div>
             </div>
           </div>
         </div>
@@ -1386,7 +1398,7 @@ title: gwt-context
             <div class="ln"><span class="gutter">3</span><span class="prompt"> </span><span class="cmd">  GWT_EMBEDDING_MODEL=<span class="arg">hash</span> \</span></div>
             <div class="ln"><span class="gutter">4</span><span class="prompt"> </span><span class="cmd">  python -m <span class="arg">gwt_context.smoke</span></span></div>
             <div class="blank"></div>
-            <div class="ln"><span class="gutter">5</span><span class="prompt">→</span><span class="cmt">bounded sanity ok · 201 / 201</span></div>
+            <div class="ln"><span class="gutter">5</span><span class="prompt">→</span><span class="cmt">bounded sanity ok · 206 / 206</span></div>
             <div class="blank"></div>
             <div class="ln"><span class="gutter">6</span><span class="prompt">$</span><span class="cmd">python -m <span class="arg">gwt_context.mcp_client_smoke</span></span></div>
             <div class="ln"><span class="gutter">7</span><span class="prompt">→</span><span class="cmt">mcp tools ok · 5 subs · bus on/off</span></div>
@@ -1418,19 +1430,29 @@ title: gwt-context
           <div><h5>Release readiness</h5><p>Gates and commands required before tagging a release candidate.</p></div>
           <span class="arr">→</span>
         </a>
-        <a class="doc" href="gwt-runtime-contracts.html">
+        <a class="doc" href="benchmark-report-v0.3.html">
           <span class="n">04</span>
+          <div><h5>v0.3 benchmark report</h5><p>Current Qwen sanity matrix, bus deltas, release gates, and the latest delta example.</p></div>
+          <span class="arr">→</span>
+        </a>
+        <a class="doc" href="gwt-runtime-contracts.html">
+          <span class="n">05</span>
           <div><h5>Runtime contracts</h5><p>State boundaries: workspace, bus, subscribers, and memory operations.</p></div>
           <span class="arr">→</span>
         </a>
         <a class="doc" href="mcp-tool-contracts.html">
-          <span class="n">05</span>
+          <span class="n">06</span>
           <div><h5>MCP tool contracts</h5><p>Payload shapes for every tool exposed through MCP.</p></div>
           <span class="arr">→</span>
         </a>
         <a class="doc" href="releases/v0.3.0.html">
-          <span class="n">06</span>
+          <span class="n">07</span>
           <div><h5>v0.3.0 RC notes</h5><p>Current release candidate: what changed, what is pending.</p></div>
+          <span class="arr">→</span>
+        </a>
+        <a class="doc" href="releases/v0.3.0-rc1.html">
+          <span class="n">08</span>
+          <div><h5>v0.3.0-rc1 tag notes</h5><p>Tag-specific release candidate notes and final tag checklist.</p></div>
           <span class="arr">→</span>
         </a>
       </div>
@@ -1463,8 +1485,8 @@ title: gwt-context
           <h4>Evidence</h4>
           <ul>
             <li><a href="dogfood-report.html">Last dogfood run</a></li>
-            <li><a href="release-thresholds.html">RULER sanity</a></li>
-            <li><a href="release-thresholds.html">LongBench sanity</a></li>
+            <li><a href="benchmark-report-v0.3.html">RULER sanity</a></li>
+            <li><a href="benchmark-report-v0.3.html">LongBench sanity</a></li>
             <li><a href="honest-gwt-report.html">Honest report</a></li>
           </ul>
         </div>
@@ -1472,7 +1494,7 @@ title: gwt-context
           <h4>Build</h4>
           <ul>
             <li><a href="https://github.com/netsky-lab/gwt-context">GitHub ↗</a></li>
-            <li><a href="releases/v0.3.0.html">v0.3.0 RC notes</a></li>
+            <li><a href="releases/v0.3.0-rc1.html">v0.3.0-rc1 notes</a></li>
             <li><a href="mcp-tool-contracts.html">MCP tool contracts</a></li>
             <li><a href="publishing.html">Publishing</a></li>
           </ul>
@@ -1480,7 +1502,7 @@ title: gwt-context
       </div>
       <div class="foot-bottom">
         <span>© 2026 netsky-lab · gwt-context</span>
-        <span>v0.3.0 RC · 2026-04-28</span>
+        <span>v0.3.0 RC · 2026-04-29</span>
       </div>
     </div>
   </footer>

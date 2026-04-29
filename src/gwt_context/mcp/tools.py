@@ -117,6 +117,16 @@ def register_tools(
         }
 
     @mcp.tool()
+    def gwt_readiness_check() -> dict[str, Any]:
+        """Return a compact runtime readiness summary for MCP clients."""
+        return _readiness_payload(
+            cycle=cycle,
+            ingestion=ingestion,
+            runtime_index=runtime_index,
+            restored_count=restored_count,
+        )
+
+    @mcp.tool()
     def gwt_reset(scope: str = "runtime", confirm: str = "") -> dict[str, Any]:
         """Reset runtime MCP read models with an explicit confirmation string.
 
@@ -867,6 +877,62 @@ def _memory_tags(tags: Sequence[str] | None) -> list[str]:
         if tag not in merged:
             merged.append(tag)
     return merged
+
+
+def _readiness_payload(
+    *,
+    cycle: CyclePort,
+    ingestion: IngestionPort,
+    runtime_index: RuntimeMemoryIndex,
+    restored_count: int,
+) -> dict[str, Any]:
+    items = ingestion.all_items()
+    workspace = cycle.inspect(target="workspace")
+    stats = cycle.inspect(target="stats")
+    bus = cycle.inspect(target="broadcast_bus")
+    namespace = _memory_namespace()
+    runtime_collection = runtime_index.collection()
+    bus_summary = _bus_snapshot_summary(bus)
+    checks = {
+        "mcp_tools_registered": True,
+        "workspace_readable": isinstance(workspace, dict),
+        "stats_readable": isinstance(stats, dict),
+        "broadcast_bus_configured": bool(bus.get("configured")),
+        "persistent_store_readable": isinstance(items, list),
+        "runtime_index_bootstrapped": restored_count >= 0,
+        "structured_parser_ready": len(runtime_collection.field_names) >= 0,
+        "no_subscriber_errors": (
+            not bus_summary["subscriber_statuses"]
+            or bus_summary["subscriber_statuses"].get("error", 0) == 0
+        ),
+        "no_subscriber_timeouts": (
+            not bus_summary["subscriber_statuses"]
+            or bus_summary["subscriber_statuses"].get("timeout", 0) == 0
+        ),
+    }
+    return {
+        "status": "ready" if all(checks.values()) else "degraded",
+        "checks": checks,
+        "namespace": namespace,
+        "embedding": {
+            "provider": os.environ.get("GWT_EMBEDDING_PROVIDER", "hash"),
+            "model": os.environ.get("GWT_EMBEDDING_MODEL", "hash"),
+            "dim": os.environ.get("GWT_EMBEDDING_DIM"),
+        },
+        "counts": {
+            "persisted_items": len(items),
+            "runtime_index_items": len(runtime_index.contents()),
+            "structured_records": len(runtime_collection.records),
+            "workspace_occupied": workspace.get("occupied_count", 0),
+            "workspace_capacity": workspace.get("capacity", 0),
+            "buffer_size": stats.get("buffer_size", 0),
+            "broadcasts": stats.get("broadcasts", 0),
+            "active_goals": stats.get("active_goals", 0),
+        },
+        "broadcast_bus": bus_summary,
+        "file_sizes": _namespace_file_sizes(namespace["data_dir"]),
+        "restored_runtime_items": restored_count,
+    }
 
 
 def _namespace_file_sizes(data_dir: str) -> dict[str, int]:

@@ -18,6 +18,7 @@ EXPECTED_TOOLS = {
     "gwt_link",
     "gwt_memory_profile",
     "gwt_query",
+    "gwt_readiness_check",
     "gwt_resolve",
     "gwt_restore_memory",
     "gwt_reset",
@@ -55,6 +56,7 @@ def test_core_tool_response_key_contracts_are_stable(tmp_path) -> None:
     gwt_store = _tool_call(mcp, "gwt_store")
     gwt_query = _tool_call(mcp, "gwt_query")
     gwt_resolve = _tool_call(mcp, "gwt_resolve")
+    gwt_readiness_check = _tool_call(mcp, "gwt_readiness_check")
     gwt_collection_query = _tool_call(mcp, "gwt_collection_query")
     gwt_attend = _tool_call(mcp, "gwt_attend")
     gwt_trace_explain = _tool_call(mcp, "gwt_trace_explain")
@@ -67,6 +69,7 @@ def test_core_tool_response_key_contracts_are_stable(tmp_path) -> None:
     attend = gwt_attend("How many ideas have status = 'ready'?", planner="structured")
     trace = gwt_trace_explain()
     bus = gwt_bus_inspect()
+    readiness = gwt_readiness_check()
 
     assert set(store) == {"id", "memory_type", "activation_state", "linked_to", "tags", "status"}
     assert set(query[0]) == {
@@ -116,3 +119,6 @@ def test_core_tool_response_key_contracts_are_stable(tmp_path) -> None:
         "trace",
     } <= set(trace)
     assert {"status", "broadcast_bus", "summary"} <= set(bus)
+    assert {"status", "checks", "namespace", "embedding", "counts", "broadcast_bus"} <= set(
+        readiness
+    )

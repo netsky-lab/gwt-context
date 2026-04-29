@@ -380,6 +380,34 @@ class TestBoundaryDelegation:
         assert result["counts_by_type"] == {"semantic": 1}
         cycle.inspect.assert_called_once_with(target="stats")
 
+    def test_gwt_readiness_check_reports_runtime_health(self):
+        cycle = Mock()
+        cycle.inspect = Mock(
+            side_effect=[
+                {"occupied_count": 1, "capacity": 3},
+                {"buffer_size": 2, "broadcasts": 4, "active_goals": 1},
+                {"configured": True, "last_result": None},
+            ]
+        )
+        ingestion = Mock()
+        ingestion.all_items = Mock(
+            return_value=[
+                MemoryItem(
+                    id="item-1",
+                    content="Idea-001 | type=twitter | topic=GWT | score=9",
+                    memory_type=MemoryType.SEMANTIC,
+                )
+            ]
+        )
+
+        mcp = _register_tool_cycle_handlers(cycle, ingestion)
+        result = _tool_call(mcp, "gwt_readiness_check")()
+
+        assert result["status"] == "ready"
+        assert result["checks"]["broadcast_bus_configured"] is True
+        assert result["counts"]["persisted_items"] == 1
+        assert result["counts"]["structured_records"] == 1
+
     def test_gwt_reset_runtime_requires_confirmation_and_preserves_persistence(self):
         cycle = Mock()
         cycle.enqueue_for_competition = Mock()

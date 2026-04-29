@@ -1,6 +1,6 @@
 # Release Readiness
 
-Status as of 2026-04-28: release candidate for local MCP use and bounded
+Status as of 2026-04-29: release candidate for local MCP use and bounded
 OpenAI-compatible benchmark evaluation.
 
 ## What Is Ready
@@ -62,18 +62,19 @@ For a bounded model-backed sanity run against the configured `.env` endpoint:
 python scripts/qwen_sanity.py --run --max-tasks 2
 ```
 
-Latest `max_tasks=2` Qwen sanity on 2026-04-28:
+Latest `max_tasks=5` Qwen sanity on 2026-04-29:
 
 | Slice | Bus | Tasks | GWT | Baseline | Avg GWT Tool Calls | Bus accepted/inhibited |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | RULER advisor | on | 2 | 100% | 100% | 3.0 | 2 / 4 |
 | RULER advisor | off | 2 | 100% | 100% | 3.0 | 0 / 0 |
-| LongBench count/filter | on | 2 | 100% | 100% | 3.0 | 2 / 2 |
-| LongBench count/filter | off | 2 | 100% | 100% | 3.0 | 0 / 0 |
+| LongBench count/filter/aggregate/top_k/synthesis | on | 5 | 100% | 100% | 3.0 | 5 / 5 |
+| LongBench count/filter/aggregate/top_k/synthesis | off | 5 | 100% | 80% | 3.0 | 0 / 0 |
 
 Dogfood evidence is recorded in `docs/dogfood-report.md`. The strongest
 defensible GWT claim and remaining caveats are recorded in
-`docs/honest-gwt-report.md`.
+`docs/honest-gwt-report.md`. The current benchmark summary is recorded in
+`docs/benchmark-report-v0.3.md`.
 
 ## Qwen Smoke
 

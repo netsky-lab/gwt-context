@@ -99,6 +99,7 @@ cleanup.
 | `gwt_collection_query` | Run exact count/filter/top-k/average/sum/distinct/min/max/compare operations over runtime structured memory |
 | `gwt_trace_explain` | Explain the most recent explicit attention trace |
 | `gwt_memory_profile` | Inspect active namespace, persisted counts, embedding settings, and structured read-model state |
+| `gwt_readiness_check` | Return compact runtime readiness checks, counts, namespace, and bus health |
 | `gwt_backup_memory` | Produce a JSONL backup payload with namespace metadata |
 | `gwt_export_memory` | Export persisted memory as JSONL without embeddings |
 | `gwt_import_memory` | Import JSONL memory into the active namespace and re-embed records |
@@ -237,6 +238,7 @@ See [`docs/attention-controller.md`](docs/attention-controller.md) for the archi
 See [`docs/release-readiness.md`](docs/release-readiness.md) for current release gates and Qwen smoke status.
 See [`docs/honest-gwt-report.md`](docs/honest-gwt-report.md) for the current GWT claim and limitations.
 See [`docs/dogfood-report.md`](docs/dogfood-report.md) for the latest real MCP/Qwen dogfood evidence.
+See [`docs/benchmark-report-v0.3.md`](docs/benchmark-report-v0.3.md) for the current v0.3 benchmark summary.
 See [`docs/mcp-tool-contracts.md`](docs/mcp-tool-contracts.md) for stable MCP response shapes.
 
 Each benchmark runs GWT mode (with tools) and baseline mode (all context in prompt) for comparison.

@@ -89,6 +89,37 @@ def register_resources(
         ]
         return "\n".join(lines)
 
+    @mcp.resource("gwt://health")
+    def health_resource() -> str:
+        """Compact runtime health summary."""
+        workspace = cycle.inspect("workspace")
+        stats = cycle.inspect("stats")
+        bus = cycle.inspect("broadcast_bus")
+        items = store.get_all_items()
+        bus_configured = bool(bus.get("configured")) if isinstance(bus, dict) else False
+        checks = {
+            "workspace_readable": isinstance(workspace, dict),
+            "stats_readable": isinstance(stats, dict),
+            "broadcast_bus_configured": bus_configured,
+            "persistent_store_readable": isinstance(items, list),
+        }
+        return json.dumps(
+            {
+                "status": "ready" if all(checks.values()) else "degraded",
+                "checks": checks,
+                "counts": {
+                    "persisted_items": len(items),
+                    "workspace_occupied": workspace.get("occupied_count", 0),
+                    "workspace_capacity": workspace.get("capacity", 0),
+                    "buffer_size": stats.get("buffer_size", 0),
+                    "broadcasts": stats.get("broadcasts", 0),
+                    "active_goals": stats.get("active_goals", 0),
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+
     @mcp.resource("gwt://attention/last")
     def last_attention_resource() -> str:
         """Most recent gwt_attend trace."""

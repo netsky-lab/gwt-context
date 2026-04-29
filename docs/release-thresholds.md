@@ -46,17 +46,17 @@ the final tag still needs the larger release matrix refreshed.
 
 ## Current v0.3.0 RC Sanity
 
-Latest bounded Qwen sanity on 2026-04-28 after memory management, bus budgets,
+Latest bounded Qwen sanity on 2026-04-29 after memory management, bus budgets,
 competition reasons, and structured parser expansion:
 
 | Slice | Bus | Tasks | GWT | Baseline | Avg Calls | Bus accepted/inhibited | Timeout/error |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | RULER advisor | on | 2 | 100.0% | 100.0% | 3.0 | 2 / 4 | 0 / 0 |
 | RULER advisor | off | 2 | 100.0% | 100.0% | 3.0 | 0 / 0 | 0 / 0 |
-| LongBench count/filter | on | 2 | 100.0% | 100.0% | 3.0 | 2 / 2 | 0 / 0 |
-| LongBench count/filter | off | 2 | 100.0% | 100.0% | 3.0 | 0 / 0 | 0 / 0 |
+| LongBench count/filter/aggregate/top_k/synthesis | on | 5 | 100.0% | 100.0% | 3.0 | 5 / 5 | 0 / 0 |
+| LongBench count/filter/aggregate/top_k/synthesis | off | 5 | 100.0% | 80.0% | 3.0 | 0 / 0 | 0 / 0 |
 
 Bus inhibition reasons were present in the summary:
-`resolved_answer_present=4` for RULER and `resolved_answer_present=2` for
+`resolved_answer_present=4` for RULER and `resolved_answer_present=5` for
 LongBench. This satisfies the bounded RC sanity gate; it does not replace the
 larger release matrix for a final tag.

@@ -10,7 +10,7 @@ Before tagging a release candidate:
 ```bash
 python scripts/release_gate.py
 npm run memory:health -- --smoke --json
-npm run qwen:sanity -- --run --max-tasks 2
+npm run qwen:sanity -- --run --max-tasks 5
 ```
 
 Then inspect:
@@ -19,7 +19,9 @@ Then inspect:
 - `docs/release-thresholds.md`
 - `docs/dogfood-report.md`
 - `docs/honest-gwt-report.md`
+- `docs/benchmark-report-v0.3.md`
 - `docs/releases/v0.3.0.md`
+- `docs/releases/v0.3.0-rc1.md`
 
 Do not publish if any of these are true:
 
@@ -48,4 +50,3 @@ python -m build
 
 Publishing to PyPI or an internal registry should use a tagged commit that has
 passed the release gate and has matching release notes under `docs/releases/`.
-

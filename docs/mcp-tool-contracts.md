@@ -50,6 +50,9 @@ removed without updating tests and changelog.
     `persisted_item_count`, `runtime_index_count`, `structured_record_count`,
     `structured_fields`, `counts_by_type`, `counts_by_source`, `file_sizes`,
     `restored_runtime_items`, `cycle_stats`, `retention_policy`
+- `gwt_readiness_check()`
+  - Success keys: `status`, `checks`, `namespace`, `embedding`, `counts`,
+    `broadcast_bus`, `file_sizes`, `restored_runtime_items`
 - `gwt_backup_memory(memory_type?, tag?)`
   - Success keys: `status`, `format`, `namespace`, `file_sizes`,
     `item_count`, `jsonl`
